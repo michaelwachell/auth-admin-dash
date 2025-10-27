@@ -8,7 +8,7 @@ export class GigyaClient {
     this.config = config
   }
 
-  async callApi(endpoint: string, params: Record<string, any> = {}): Promise<GigyaResponse> {
+  callApi = async (endpoint: string, params: Record<string, any> = {}): Promise<GigyaResponse> => {
     const url = `https://accounts.${this.config.dataCenter}.gigya.com/${endpoint}`
     
     // Build form data with required authentication parameters
@@ -36,13 +36,13 @@ export class GigyaClient {
     }
 
     try {
-      const response = await axios.post(url, formData, {
+      const { data } = await axios.post(url, formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
       })
 
-      return response.data
+      return data
     } catch (error: any) {
       if (error.response?.data) {
         return error.response.data
@@ -51,7 +51,6 @@ export class GigyaClient {
     }
   }
 
-  async unlockAccount(params: Record<string, any>): Promise<GigyaResponse> {
-    return this.callApi('accounts.rba.unlock', params)
-  }
+  unlockAccount = async (params: Record<string, any>): Promise<GigyaResponse> => 
+    this.callApi('accounts.rba.unlock', params)
 }

@@ -7,7 +7,7 @@ interface UnlockFormProps {
   loading: boolean
 }
 
-export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
+const UnlockForm = ({ onSubmit, loading }: UnlockFormProps) => {
   const [formData, setFormData] = useState<UnlockRequest>({
     UID: '',
     regToken: '',
@@ -75,7 +75,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
             id="uid"
             type="text"
             value={formData.UID}
-            onChange={(e) => handleChange('UID', e.target.value)}
+            onChange={e => handleChange('UID', e.target.value)}
             className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
               errors.UID ? 'border-red-500' : 'border-gray-700'
             }`}
@@ -98,7 +98,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
             id="regToken"
             type="text"
             value={formData.regToken}
-            onChange={(e) => handleChange('regToken', e.target.value)}
+            onChange={e => handleChange('regToken', e.target.value)}
             className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
               errors.regToken ? 'border-red-500' : 'border-gray-700'
             }`}
@@ -139,7 +139,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
                 id="ip"
                 type="text"
                 value={formData.IP}
-                onChange={(e) => handleChange('IP', e.target.value)}
+                onChange={e => handleChange('IP', e.target.value)}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 placeholder="e.g., 192.168.1.1"
                 disabled={loading}
@@ -156,7 +156,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
               <select
                 id="targetEnv"
                 value={formData.targetEnv || ''}
-                onChange={(e) => handleChange('targetEnv', e.target.value || undefined)}
+                onChange={e => handleChange('targetEnv', e.target.value || undefined)}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 disabled={loading}
               >
@@ -175,7 +175,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
                 <input
                   type="checkbox"
                   checked={formData.ignoreApiQueue || false}
-                  onChange={(e) => handleChange('ignoreApiQueue', e.target.checked)}
+                  onChange={e => handleChange('ignoreApiQueue', e.target.checked)}
                   className="w-4 h-4 bg-gray-800 border border-gray-700 rounded text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-gray-900"
                   disabled={loading}
                 />
@@ -191,7 +191,7 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
                 <input
                   type="checkbox"
                   checked={formData.httpStatusCodes || false}
-                  onChange={(e) => handleChange('httpStatusCodes', e.target.checked)}
+                  onChange={e => handleChange('httpStatusCodes', e.target.checked)}
                   className="w-4 h-4 bg-gray-800 border border-gray-700 rounded text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-gray-900"
                   disabled={loading}
                 />
@@ -230,3 +230,5 @@ export default function UnlockForm({ onSubmit, loading }: UnlockFormProps) {
     </form>
   )
 }
+
+export default UnlockForm

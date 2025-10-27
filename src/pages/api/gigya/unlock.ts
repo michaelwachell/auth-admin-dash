@@ -2,10 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { GigyaClient } from '@/lib/gigya'
 import { UnlockRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
 
-export default async function handler(
+const handler = async (
   req: NextApiRequest,
   res: NextApiResponse<ApiResponse<GigyaResponse>>
-) {
+) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ 
       success: false, 
@@ -24,7 +24,9 @@ export default async function handler(
   }
 
   // Check if environment variables are configured
-  if (!process.env.GIGYA_API_KEY || !process.env.GIGYA_SECRET_KEY || !process.env.GIGYA_DATA_CENTER) {
+  const { GIGYA_API_KEY, GIGYA_SECRET_KEY, GIGYA_DATA_CENTER, GIGYA_USER_KEY } = process.env
+  
+  if (!GIGYA_API_KEY || !GIGYA_SECRET_KEY || !GIGYA_DATA_CENTER) {
     return res.status(500).json({ 
       success: false, 
       error: 'Gigya credentials not configured. Please check your .env file.' 
@@ -33,27 +35,24 @@ export default async function handler(
 
   try {
     const client = new GigyaClient({
-      apiKey: process.env.GIGYA_API_KEY,
-      secretKey: process.env.GIGYA_SECRET_KEY,
-      dataCenter: process.env.GIGYA_DATA_CENTER,
-      userKey: process.env.GIGYA_USER_KEY
+      apiKey: GIGYA_API_KEY,
+      secretKey: GIGYA_SECRET_KEY,
+      dataCenter: GIGYA_DATA_CENTER,
+      userKey: GIGYA_USER_KEY
     })
 
     const result = await client.unlockAccount(params)
 
     // Check if the request was successful
-    if (result.statusCode === 200) {
-      return res.status(200).json({ 
-        success: true, 
-        data: result 
-      })
-    } else {
-      return res.status(400).json({ 
-        success: false, 
+    const isSuccess = result.statusCode === 200
+    
+    return res.status(isSuccess ? 200 : 400).json({ 
+      success: isSuccess, 
+      ...(isSuccess ? { data: result } : { 
         error: result.errorMessage || 'Failed to unlock account',
         data: result 
       })
-    }
+    })
   } catch (error: any) {
     console.error('Error calling Gigya API:', error)
     return res.status(500).json({ 
@@ -62,3 +61,5 @@ export default async function handler(
     })
   }
 }
+
+export default handler

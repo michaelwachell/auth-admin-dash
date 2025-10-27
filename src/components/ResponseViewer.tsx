@@ -6,7 +6,7 @@ interface ResponseViewerProps {
   title?: string
 }
 
-export default function ResponseViewer({ response, title = 'Response' }: ResponseViewerProps) {
+const ResponseViewer = ({ response, title = 'Response' }: ResponseViewerProps) => {
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(true)
 
@@ -57,3 +57,5 @@ export default function ResponseViewer({ response, title = 'Response' }: Respons
     </div>
   )
 }
+
+export default ResponseViewer

@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { Shield, Lock, Key, Activity } from 'lucide-react'
+import { Shield, Lock, Key, Activity, Cloud } from 'lucide-react'
 import UnlockForm from '@/components/UnlockForm'
 import ResponseViewer from '@/components/ResponseViewer'
 import Toast from '@/components/Toast'
+import PingAICTester from '@/components/PingAICTester'
 import { UnlockRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<'gigya' | 'ping'>('ping')
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<GigyaResponse | null>(null)
   const [toast, setToast] = useState<{
@@ -20,6 +22,18 @@ export default function Home() {
     identifierType: 'UID' | 'regToken'
     success: boolean
   }>>([])
+
+  // Load and save tab preference
+  useEffect(() => {
+    const savedTab = localStorage.getItem('selected_tab') as 'gigya' | 'ping';
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('selected_tab', activeTab);
+  }, [activeTab]);
 
   const handleUnlock = async (data: UnlockRequest) => {
     setLoading(true)
@@ -80,8 +94,8 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Gigya Admin Dashboard</title>
-        <meta name="description" content="Admin interface for Gigya account management" />
+        <title>Auth Admin Dashboard</title>
+        <meta name="description" content="Admin interface for authentication management" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -94,17 +108,42 @@ export default function Home() {
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-3">
                   <Shield className="w-8 h-8 text-blue-500" />
-                  <h1 className="text-xl font-semibold text-gray-100">Gigya Admin Dashboard</h1>
+                  <h1 className="text-xl font-semibold text-gray-100">Auth Admin Dashboard</h1>
                 </div>
                 <div className="flex items-center gap-2 ml-11">
                   <Activity className="w-3 h-3 text-green-400" />
-                  <code className="text-xs text-gray-400 font-mono bg-gray-900 px-2 py-0.5 rounded">
-                    accounts.rba.unlock
-                  </code>
+                  <span className="text-xs text-gray-400">
+                    {activeTab === 'gigya' ? 'Gigya Account Management' : 'Ping AIC OIDC Tester'}
+                  </span>
                 </div>
               </div>
-              <div className="text-xs text-gray-500">
-                Risk-Based Authentication Management
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveTab('gigya')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'gigya'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Gigya
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('ping')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'ping'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-4 h-4" />
+                    Ping AIC
+                  </div>
+                </button>
               </div>
             </div>
           </div>
@@ -112,7 +151,8 @@ export default function Home() {
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {activeTab === 'gigya' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column - Form */}
             <div className="lg:col-span-2 space-y-6">
               {/* Form Card */}
@@ -201,7 +241,10 @@ export default function Home() {
                 </ul>
               </div>
             </div>
-          </div>
+            </div>
+          ) : (
+            <PingAICTester />
+          )}
         </main>
 
         {/* Toast Notification */}

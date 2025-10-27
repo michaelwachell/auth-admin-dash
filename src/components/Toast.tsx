@@ -8,7 +8,7 @@ interface ToastProps {
   duration?: number
 }
 
-export default function Toast({ message, type = 'info', onClose, duration = 5000 }: ToastProps) {
+const Toast = ({ message, type = 'info', onClose, duration = 5000 }: ToastProps) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose()
@@ -44,3 +44,5 @@ export default function Toast({ message, type = 'info', onClose, duration = 5000
     </div>
   )
 }
+
+export default Toast
