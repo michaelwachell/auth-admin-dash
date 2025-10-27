@@ -1,149 +1,175 @@
-# Gigya Admin Dashboard
+# Auth Admin Dashboard
 
-A Next.js admin interface for managing Gigya accounts, starting with the `accounts.rba.unlock` functionality.
+A comprehensive authentication testing and administration dashboard featuring **Ping AIC OIDC testing** and Gigya account management.
 
-## Features
+## 🚀 Primary Feature: Ping AIC OIDC Tester
 
-- 🔓 Unlock user accounts via the RBA (Risk-Based Authentication) system
-- 🔐 Secure server-to-server authentication
-- 📊 Real-time response viewing with JSON formatting
-- 📝 Activity history tracking
-- 🎨 Dark theme UI inspired by clauduct-manager
-- 🔔 Toast notifications for success/error states
+A browser-based OIDC flow tester designed for **Ping AIC migration** and testing. Get access tokens quickly without complex setup.
 
-## Setup
+![Ping AIC OIDC Tester Interface](./docs/ping-aic-tester.png)
+<!-- Place the Ping AIC tester screenshot in docs/ping-aic-tester.png -->
 
-1. **Install dependencies:**
-   ```bash
-   yarn install
+### Key Features
+
+- 🔐 **Complete OIDC Flow Support**
+  - Authorization Code Flow with PKCE
+  - Implicit Flow
+  - Refresh Token support
+- 🌐 **Browser-Based Token Exchange** - No backend proxy needed
+- 💾 **Persistent Configuration** - Settings saved to localStorage
+- 🔄 **Automatic Token Refresh** - Built-in refresh token handling
+- ⏱️ **Live Token Expiry Timer** - Color-coded countdown
+- 📋 **One-Click Token Copy** - Easy token extraction
+- 🔍 **JWT Decoder** - View token claims instantly
+
+### Quick Start - Ping AIC Testing
+
+1. **Navigate to Ping AIC tab** (default tab)
+2. **Enter your metadata URL**: 
    ```
+   https://auth.pingone.com/[env-id]/as/.well-known/openid-configuration
+   ```
+3. **Click "Fetch"** to auto-discover endpoints
+4. **Enter your Client ID**
+5. **Click "Start Authorization Flow"** - Opens in new window
+6. **Complete authentication** in the popup
+7. **Copy the redirect URL** from the callback page
+8. **Paste and click "Exchange for Token"**
+9. **Get your access token!** Copy and use for API testing
 
-2. **Configure Gigya credentials:**
-   
-   Copy the example environment file and add your credentials:
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and add your Gigya credentials:
-   ```
+### Ping AIC Configuration
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| Metadata URL | OIDC discovery endpoint | `https://auth.pingone.com/.../openid-configuration` |
+| Client ID | Your application's client ID | `my-app-client` |
+| Client Secret | Optional for confidential clients | `secret123` |
+| Redirect URI | Callback URL (auto-set) | `http://localhost:3000/callback` |
+| Scope | OAuth scopes | `openid profile email` |
+| Flow Type | Authorization Code or Implicit | Authorization Code recommended |
+| PKCE | Proof Key for Code Exchange | Enable for public clients |
+
+### Token Management
+
+- **Access Token Display**: Always visible with copy button
+- **ID Token Display**: Decoded JWT payload view
+- **Refresh Token**: Automatic storage and refresh capability
+- **Expiry Timer**: Live countdown with color indicators
+  - 🟢 Green: > 1 minute remaining
+  - 🟡 Yellow: < 1 minute remaining
+  - 🔴 Red: Expired
+
+---
+
+## 🔓 Secondary Feature: Gigya Account Management
+
+Legacy support for Gigya account administration with RBA unlock functionality.
+
+### Gigya Features
+- Unlock user accounts via RBA system
+- Secure server-to-server authentication
+- Real-time response viewing
+- Activity history tracking
+
+### Gigya Setup
+
+1. **Configure credentials in `.env`:**
+   ```env
    GIGYA_API_KEY=your_api_key_here
    GIGYA_SECRET_KEY=your_secret_key_here
-   GIGYA_DATA_CENTER=us1  # or eu1, au1, etc.
-   GIGYA_USER_KEY=your_user_key_here  # optional
+   GIGYA_DATA_CENTER=us1
+   GIGYA_USER_KEY=your_user_key_here
    ```
 
-3. **Run the development server:**
-   ```bash
-   yarn dev
-   ```
+2. **Switch to Gigya tab** in the UI
 
-4. **Open the application:**
-   
-   Navigate to [http://localhost:3000](http://localhost:3000)
+---
 
-## Architecture
+## Installation
 
-### Tech Stack
+```bash
+# Install dependencies
+yarn install
+
+# Copy environment file
+cp .env.example .env
+
+# Add your credentials to .env
+
+# Run development server
+yarn dev
+
+# Open http://localhost:3000
+```
+
+## Tech Stack
+
 - **Next.js 13.5** - React framework with API routes
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Axios** - HTTP client for Gigya API calls
-- **Lucide React** - Icons
+- **TypeScript** - Type safety throughout
+- **Tailwind CSS** - Dark theme UI
+- **localStorage** - Persistent configuration
+- **JWT Decode** - Token inspection
 
-### Project Structure
+## Project Structure
+
 ```
 src/
 ├── pages/
 │   ├── api/
+│   │   ├── ping/
+│   │   │   ├── metadata.ts      # OIDC discovery
+│   │   │   └── token-exchange.ts # Token exchange
 │   │   └── gigya/
-│   │       └── unlock.ts    # Server-side API route
-│   ├── _app.tsx
-│   ├── _document.tsx
-│   └── index.tsx            # Main UI
+│   │       └── unlock.ts        # Gigya RBA
+│   ├── index.tsx                # Main dashboard
+│   └── callback.tsx             # OAuth callback handler
 ├── components/
-│   ├── UnlockForm.tsx       # Form for RBA unlock
-│   ├── ResponseViewer.tsx   # JSON response display
-│   └── Toast.tsx            # Notifications
-├── lib/
-│   └── gigya.ts            # Gigya client with signature generation
-├── types/
-│   └── gigya.ts            # TypeScript interfaces
-└── styles/
-    └── globals.css         # Global styles with Tailwind
+│   ├── PingAICTester.tsx       # Ping AIC OIDC tester
+│   ├── UnlockForm.tsx          # Gigya unlock form
+│   └── ResponseViewer.tsx      # JSON viewer
+└── lib/
+    └── gigya.ts                # Gigya client
 ```
 
-### Security
+## API Endpoints
 
-- API credentials are kept server-side only
-- Gigya API calls use server-to-server authentication (apiKey + secret + userKey)
-- Input validation on both client and server
-- No sensitive data exposed to the client
+### Ping AIC Endpoints
 
-## API Reference
+**POST /api/ping/metadata**
+- Fetches OIDC metadata from discovery endpoint
 
-### POST /api/gigya/unlock
+**POST /api/ping/token-exchange**
+- Exchanges authorization code for tokens
+- Supports PKCE and client credentials
 
-Unlocks a user account in the Gigya RBA system.
+### Gigya Endpoints
 
-**Request Body:**
-```json
-{
-  "UID": "user_id_here",           // At least one of UID, regToken, or IP required
-  "regToken": "registration_token", // At least one of UID, regToken, or IP required
-  "IP": "192.168.1.1",             // At least one of UID, regToken, or IP required
-  "targetEnv": "mobile",            // Optional: "mobile", "browser", or "both"
-  "ignoreApiQueue": false,          // Optional: Process immediately without queuing
-  "httpStatusCodes": false          // Optional: Return HTTP status codes in response
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "statusCode": 200,
-    "callId": "...",
-    "time": "..."
-  }
-}
-```
-
-## Extending the Dashboard
-
-To add more Gigya endpoints:
-
-1. Create a new API route in `src/pages/api/gigya/`
-2. Add the method to `src/lib/gigya.ts`
-3. Create a new form component in `src/components/`
-4. Add a new page or section to the UI
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GIGYA_API_KEY` | Your Gigya API key | Yes |
-| `GIGYA_SECRET_KEY` | Your Gigya secret key | Yes |
-| `GIGYA_DATA_CENTER` | Gigya data center (us1, eu1, etc.) | Yes |
-| `GIGYA_USER_KEY` | User key for server-to-server auth | No |
-| `NEXT_PUBLIC_DATA_CENTER` | Display data center in UI | No |
+**POST /api/gigya/unlock**
+- Unlocks user account in RBA system
 
 ## Development
 
 ```bash
-# Run development server
+# Development
 yarn dev
 
-# Build for production
+# Build
 yarn build
 
-# Start production server
+# Production
 yarn start
 
-# Run linting
+# Lint
 yarn lint
 ```
+
+## Security
+
+- No credentials stored in frontend code
+- Browser-based token handling for Ping AIC
+- Server-side authentication for Gigya
+- PKCE support for public clients
+- Secure localStorage for configuration
 
 ## License
 
