@@ -178,7 +178,7 @@ export default function PingAICTester() {
         setTokenResponse(data);
         // Store refresh token if present
         if (data.refresh_token) {
-          sessionStorage.setItem('ping_refresh_token', data.refresh_token);
+          localStorage.setItem('ping_refresh_token', data.refresh_token);
         }
         // Set token expiry time
         if (data.expires_in) {
@@ -186,8 +186,8 @@ export default function PingAICTester() {
           setTokenExpiry(expiry);
         }
         // Clear session storage on success
-        sessionStorage.removeItem('ping_oidc_state');
-        sessionStorage.removeItem('ping_pkce_verifier');
+        localStorage.removeItem('ping_oidc_state');
+        localStorage.removeItem('ping_pkce_verifier');
       }
     } catch (err) {
       setError(`Failed to exchange code: ${err}`);
@@ -272,9 +272,9 @@ export default function PingAICTester() {
     setState(stateValue);
     
     // Store state for validation
-    sessionStorage.setItem('ping_oidc_state', stateValue);
-    sessionStorage.setItem('ping_oidc_metadata', JSON.stringify(metadata));
-    sessionStorage.setItem('ping_oidc_config', JSON.stringify(config));
+    localStorage.setItem('ping_oidc_state', stateValue);
+    localStorage.setItem('ping_oidc_metadata', JSON.stringify(metadata));
+    localStorage.setItem('ping_oidc_config', JSON.stringify(config));
     
     authUrl.searchParams.append('client_id', config.clientId);
     authUrl.searchParams.append('redirect_uri', config.redirectUri);
@@ -289,7 +289,7 @@ export default function PingAICTester() {
       
       if (config.usePKCE) {
         const { verifier, challenge } = await generatePKCE();
-        sessionStorage.setItem('ping_pkce_verifier', verifier);
+        localStorage.setItem('ping_pkce_verifier', verifier);
         
         authUrl.searchParams.append('code_challenge', challenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
@@ -333,8 +333,8 @@ export default function PingAICTester() {
         const returnedState = params.get('state');
         
         // Retrieve stored values
-        const storedState = sessionStorage.getItem('ping_oidc_state');
-        const storedVerifier = sessionStorage.getItem('ping_pkce_verifier');
+        const storedState = localStorage.getItem('ping_oidc_state');
+        const storedVerifier = localStorage.getItem('ping_pkce_verifier');
         
         console.log('Processing auth code:', code);
         console.log('State check:', { returned: returnedState, stored: storedState });
@@ -380,7 +380,7 @@ export default function PingAICTester() {
   };
 
   const refreshAccessToken = async () => {
-    const refreshToken = tokenResponse?.refresh_token || sessionStorage.getItem('ping_refresh_token');
+    const refreshToken = tokenResponse?.refresh_token || (typeof window !== 'undefined' ? localStorage.getItem('ping_refresh_token') : null);
     
     if (!refreshToken) {
       setError('No refresh token available');
@@ -427,7 +427,7 @@ export default function PingAICTester() {
         setTokenResponse(data);
         // Update stored refresh token if a new one was provided
         if (data.refresh_token) {
-          sessionStorage.setItem('ping_refresh_token', data.refresh_token);
+          localStorage.setItem('ping_refresh_token', data.refresh_token);
         }
         // Update token expiry time
         if (data.expires_in) {
@@ -711,12 +711,12 @@ export default function PingAICTester() {
           </div>
         )}
         
-        {(tokenResponse?.refresh_token || sessionStorage.getItem('ping_refresh_token')) && (
+        {(tokenResponse?.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium text-gray-300">Refresh Token</h3>
               <button
-                onClick={() => copyToClipboard(tokenResponse?.refresh_token || sessionStorage.getItem('ping_refresh_token')!, 'refresh_token')}
+                onClick={() => copyToClipboard(tokenResponse?.refresh_token || (typeof window !== 'undefined' ? localStorage.getItem('ping_refresh_token') : '') || '', 'refresh_token')}
                 className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-sm"
               >
                 {copied === 'refresh_token' ? (
@@ -733,7 +733,7 @@ export default function PingAICTester() {
               </button>
             </div>
             <div className="bg-gray-900 p-3 rounded-md font-mono text-xs break-all text-gray-300">
-              {tokenResponse?.refresh_token || sessionStorage.getItem('ping_refresh_token')}
+              {tokenResponse?.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))}
             </div>
           </div>
         )}
@@ -754,13 +754,13 @@ export default function PingAICTester() {
                 )}
               </div>
               <div>Scope: {tokenResponse.scope}</div>
-              {(tokenResponse.refresh_token || sessionStorage.getItem('ping_refresh_token')) && (
+              {(tokenResponse.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
                 <div className="text-green-400">✓ Refresh token available</div>
               )}
             </div>
             
             <div className="flex gap-2 mt-4">
-              {(tokenResponse.refresh_token || sessionStorage.getItem('ping_refresh_token')) && (
+              {(tokenResponse.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
                 <button
                   onClick={refreshAccessToken}
                   disabled={refreshing}
@@ -785,7 +785,7 @@ export default function PingAICTester() {
                   setError(null);
                   setTokenExpiry(null);
                   setTimeRemaining('');
-                  sessionStorage.removeItem('ping_refresh_token');
+                  localStorage.removeItem('ping_refresh_token');
                 }}
                 className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
               >
