@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { Shield, Lock, Key, Activity, Cloud } from 'lucide-react'
+import { Shield, Lock, Key, Activity, Cloud, Settings } from 'lucide-react'
 import UnlockForm from '@/components/UnlockForm'
 import ResponseViewer from '@/components/ResponseViewer'
 import Toast from '@/components/Toast'
 import PingAICTester from '@/components/PingAICTester'
+import PingAdminPanel from '../../components/PingAdminPanel'
 import { UnlockRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'gigya' | 'ping'>('ping')
+  const [activeTab, setActiveTab] = useState<'gigya' | 'ping' | 'admin'>('ping')
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<GigyaResponse | null>(null)
   const [toast, setToast] = useState<{
@@ -25,7 +26,7 @@ export default function Home() {
 
   // Load and save tab preference
   useEffect(() => {
-    const savedTab = localStorage.getItem('selected_tab') as 'gigya' | 'ping';
+    const savedTab = localStorage.getItem('selected_tab') as 'gigya' | 'ping' | 'admin';
     if (savedTab) {
       setActiveTab(savedTab);
     }
@@ -113,7 +114,9 @@ export default function Home() {
                 <div className="flex items-center gap-2 ml-11">
                   <Activity className="w-3 h-3 text-green-400" />
                   <span className="text-xs text-gray-400">
-                    {activeTab === 'gigya' ? 'Gigya Account Management' : 'Ping AIC OIDC Tester'}
+                    {activeTab === 'gigya' ? 'Gigya Account Management' : 
+                     activeTab === 'ping' ? 'Ping AIC OIDC Tester' : 
+                     'Ping Admin Panel'}
                   </span>
                 </div>
               </div>
@@ -142,6 +145,19 @@ export default function Home() {
                   <div className="flex items-center gap-2">
                     <Cloud className="w-4 h-4" />
                     Ping AIC
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'admin'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    Ping Admin
                   </div>
                 </button>
               </div>
@@ -242,8 +258,10 @@ export default function Home() {
               </div>
             </div>
             </div>
-          ) : (
+          ) : activeTab === 'ping' ? (
             <PingAICTester />
+          ) : (
+            <PingAdminPanel />
           )}
         </main>
 

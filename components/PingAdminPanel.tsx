@@ -1,0 +1,1285 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { AlertCircle, Copy, Eye, EyeOff, RefreshCw, Send, Settings, CheckCircle, FileText, Download, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table, Code } from 'lucide-react'
+
+interface TokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  scope?: string
+}
+
+interface LogEntry {
+  payload?: {
+    context?: string
+    level?: string
+    logger?: string
+    message?: string
+    thread?: string
+    timestamp?: string
+    transactionId?: string
+    mdc?: {
+      transactionId?: string
+    }
+    [key: string]: any
+  }
+  source?: string
+  timestamp?: string
+  type?: string
+  // Also support direct fields for backward compatibility
+  level?: string
+  message?: string
+  [key: string]: any
+}
+
+export default function PingAdminPanel() {
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [tokenEndpoint, setTokenEndpoint] = useState('')
+  const [metadataEndpoint, setMetadataEndpoint] = useState('')
+  const [scopes, setScopes] = useState('openid profile email fr:idm:* fr:am:*')
+  const [accessToken, setAccessToken] = useState('')
+  const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null)
+  const [showSecret, setShowSecret] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [fetchingMetadata, setFetchingMetadata] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [lastCurl, setLastCurl] = useState('')
+  const [copied, setCopied] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'credentials' | 'api-calls'>('credentials')
+  
+  // Log fetching states
+  const [logEndpoint, setLogEndpoint] = useState('')
+  const [logApiKey, setLogApiKey] = useState('')
+  const [logApiSecret, setLogApiSecret] = useState('')
+  const [showLogSecret, setShowLogSecret] = useState(false)
+  const [logSource, setLogSource] = useState('am-core')
+  const [logLevel, setLogLevel] = useState('')
+  const [beginTime, setBeginTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [logPageSize, setLogPageSize] = useState('50')
+  const [logPageCookie, setLogPageCookie] = useState('')
+  const [customFilter, setCustomFilter] = useState('')
+  const [filterMode, setFilterMode] = useState<'builder' | 'custom'>('builder')
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [fetchingLogs, setFetchingLogs] = useState(false)
+  const [logsCurl, setLogsCurl] = useState('')
+  const [nextPageCookie, setNextPageCookie] = useState('')
+  
+  // Client-side log management
+  const [clientFilter, setClientFilter] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [logsPerPage, setLogsPerPage] = useState(50)
+  const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set())
+  const [logViewMode, setLogViewMode] = useState<'json' | 'table'>('table')
+  
+  // Helper function to format date for datetime-local input
+  const formatDateForInput = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  }
+
+  // Load from storage on mount
+  useEffect(() => {
+    const storedClientId = localStorage.getItem('ping_admin_client_id')
+    const storedToken = sessionStorage.getItem('ping_admin_access_token')
+    const storedExpiry = sessionStorage.getItem('ping_admin_token_expiry')
+    const storedEndpoint = localStorage.getItem('ping_admin_token_endpoint')
+    const storedMetadata = localStorage.getItem('ping_admin_metadata_endpoint')
+    const storedLogEndpoint = localStorage.getItem('ping_admin_log_endpoint')
+    const storedLogApiKey = localStorage.getItem('ping_admin_log_api_key')
+
+    if (storedClientId) setClientId(storedClientId)
+    if (storedToken) setAccessToken(storedToken)
+    if (storedExpiry) setTokenExpiry(new Date(storedExpiry))
+    if (storedEndpoint) setTokenEndpoint(storedEndpoint)
+    if (storedMetadata) setMetadataEndpoint(storedMetadata)
+    if (storedLogEndpoint) setLogEndpoint(storedLogEndpoint)
+    if (storedLogApiKey) setLogApiKey(storedLogApiKey)
+    
+    // Set default time range to last 24 hours
+    const now = new Date()
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    setBeginTime(yesterday.toISOString())
+    setEndTime(now.toISOString())
+  }, [])
+
+  // Save API key to localStorage when changed
+  useEffect(() => {
+    if (logApiKey) {
+      localStorage.setItem('ping_admin_log_api_key', logApiKey)
+    }
+  }, [logApiKey])
+
+  useEffect(() => {
+    if (tokenEndpoint) {
+      localStorage.setItem('ping_admin_token_endpoint', tokenEndpoint)
+      
+      // Auto-construct log endpoint from token endpoint
+      // Handle both .forgeblocks.com and .id.forgerock.io domains
+      const forgeblocksMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
+      const forgerockMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
+      
+      if (forgeblocksMatch) {
+        const tenant = forgeblocksMatch[1]
+        const constructedLogEndpoint = `https://${tenant}.forgeblocks.com/monitoring/logs`
+        setLogEndpoint(constructedLogEndpoint)
+      } else if (forgerockMatch) {
+        // For forgerock.io domains, use the full hostname
+        const hostname = forgerockMatch[0]
+        const constructedLogEndpoint = `${hostname}/monitoring/logs`
+        setLogEndpoint(constructedLogEndpoint)
+      }
+    }
+  }, [tokenEndpoint])
+
+  useEffect(() => {
+    if (logEndpoint) {
+      localStorage.setItem('ping_admin_log_endpoint', logEndpoint)
+    }
+  }, [logEndpoint])
+
+  useEffect(() => {
+    if (metadataEndpoint) {
+      localStorage.setItem('ping_admin_metadata_endpoint', metadataEndpoint)
+    }
+  }, [metadataEndpoint])
+
+  // Check token expiry
+  useEffect(() => {
+    if (tokenExpiry) {
+      const checkExpiry = setInterval(() => {
+        if (new Date() > tokenExpiry) {
+          setAccessToken('')
+          setTokenExpiry(null)
+          sessionStorage.removeItem('ping_admin_access_token')
+          sessionStorage.removeItem('ping_admin_token_expiry')
+          setError('Token has expired. Please request a new token.')
+        }
+      }, 1000)
+      return () => clearInterval(checkExpiry)
+    }
+  }, [tokenExpiry])
+
+  const requestToken = async () => {
+    if (!clientId || !clientSecret || !tokenEndpoint) {
+      setError('Please fill in all required fields')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setSuccess('')
+
+    const curl = `curl -X POST "${tokenEndpoint}" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -u "${clientId}:${clientSecret}" \\
+  -d "grant_type=client_credentials${scopes ? `&scope=${encodeURIComponent(scopes)}` : ''}"`
+    
+    setLastCurl(curl)
+
+    try {
+      const response = await fetch('/api/ping-admin/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId,
+          clientSecret,
+          tokenEndpoint,
+          scopes
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get token')
+      }
+
+      const tokenData = data as TokenResponse
+      setAccessToken(tokenData.access_token)
+      
+      const expiry = new Date(Date.now() + tokenData.expires_in * 1000)
+      setTokenExpiry(expiry)
+      
+      sessionStorage.setItem('ping_admin_access_token', tokenData.access_token)
+      sessionStorage.setItem('ping_admin_token_expiry', expiry.toISOString())
+      
+      setSuccess('Token obtained successfully!')
+      
+      // Clear client secret from form after successful auth
+      setClientSecret('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get token')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(field)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const clearToken = () => {
+    setAccessToken('')
+    setTokenExpiry(null)
+    sessionStorage.removeItem('ping_admin_access_token')
+    sessionStorage.removeItem('ping_admin_token_expiry')
+    setSuccess('Token cleared')
+  }
+
+  const fetchMetadata = async () => {
+    if (!metadataEndpoint) {
+      setError('Please provide a metadata endpoint URL')
+      return
+    }
+
+    setFetchingMetadata(true)
+    setError('')
+    
+    try {
+      const response = await fetch('/api/ping-admin/metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          metadataEndpoint
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch metadata')
+      }
+
+      // Set the token endpoint from metadata
+      if (data.token_endpoint) {
+        setTokenEndpoint(data.token_endpoint)
+        
+        // Try to construct log endpoint from the tenant URL
+        const forgeblocksMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
+        const forgerockMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
+        
+        if (forgeblocksMatch) {
+          const tenant = forgeblocksMatch[1]
+          const constructedLogEndpoint = `https://${tenant}.forgeblocks.com/monitoring/logs`
+          setLogEndpoint(constructedLogEndpoint)
+        } else if (forgerockMatch) {
+          // For forgerock.io domains, use the full hostname
+          const hostname = forgerockMatch[0]
+          const constructedLogEndpoint = `${hostname}/monitoring/logs`
+          setLogEndpoint(constructedLogEndpoint)
+        }
+        
+        setSuccess('Endpoints discovered from metadata!')
+      } else {
+        throw new Error('No token_endpoint found in metadata')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch metadata')
+    } finally {
+      setFetchingMetadata(false)
+    }
+  }
+  
+  const fetchLogs = async () => {
+    if (!logEndpoint || !logApiKey || !logApiSecret || !logSource) {
+      setError('Please provide log endpoint, API key, API secret, and select a source')
+      return
+    }
+
+    setFetchingLogs(true)
+    setError('')
+    
+    // Build query parameters based on Ping AIC API spec
+    const params = new URLSearchParams()
+    
+    // Add source as query parameter (per Ping AIC docs)
+    params.append('source', logSource)
+    
+    // Add time filters
+    if (beginTime) params.append('beginTime', beginTime)
+    if (endTime) params.append('endTime', endTime)
+    
+    // Use custom filter or build from UI
+    if (filterMode === 'custom' && customFilter) {
+      params.append('_queryFilter', customFilter)
+    } else if (filterMode === 'builder' && logLevel) {
+      // Add level filter if specified
+      params.append('_queryFilter', `level eq "${logLevel}"`)
+    }
+    
+    // Note: Ping AIC docs don't show _pageSize or _pagedResultsCookie parameters
+    // The API limits to 1000 logs per request by default
+    
+    // Ensure logEndpoint doesn't have trailing slash
+    const baseEndpoint = logEndpoint.replace(/\/$/, '')
+    
+    // Construct URL according to Ping AIC format: /monitoring/logs with source as query param
+    const url = `${baseEndpoint}${params.toString() ? '?' + params.toString() : ''}`
+    
+    console.log('Fetching logs from:', url)
+    
+    // Use x-api-key and x-api-secret headers per Ping AIC documentation
+    const curl = `curl -X GET "${url}" \\
+  -H "x-api-key: ${logApiKey}" \\
+  -H "x-api-secret: ${logApiSecret}" \\
+  -H "Accept: application/json"`
+    
+    setLogsCurl(curl)
+
+    try {
+      const response = await fetch('/api/ping-admin/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          logEndpoint: url,
+          apiKey: logApiKey,
+          apiSecret: logApiSecret
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch logs')
+      }
+
+      // Handle paginated response
+      setLogs(data.result || data.entries || [])
+      setNextPageCookie(data.pagedResultsCookie || '')
+      setSuccess('Logs fetched successfully!')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch logs')
+      setLogs([])
+    } finally {
+      setFetchingLogs(false)
+    }
+  }
+
+  const downloadLogs = () => {
+    const dataStr = JSON.stringify(logs, null, 2)
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
+    
+    const exportFileDefaultName = `logs-${new Date().toISOString()}.json`
+    
+    const linkElement = document.createElement('a')
+    linkElement.setAttribute('href', dataUri)
+    linkElement.setAttribute('download', exportFileDefaultName)
+    linkElement.click()
+  }
+
+  const isTokenValid = accessToken && tokenExpiry && new Date() < tokenExpiry
+  
+  // Filter logs client-side
+  const filteredLogs = logs.filter(log => {
+    if (!clientFilter) return true
+    const searchLower = clientFilter.toLowerCase()
+    const logString = JSON.stringify(log).toLowerCase()
+    return logString.includes(searchLower)
+  })
+  
+  // Paginate filtered logs
+  const totalPages = Math.ceil(filteredLogs.length / logsPerPage)
+  const startIndex = (currentPage - 1) * logsPerPage
+  const endIndex = startIndex + logsPerPage
+  const paginatedLogs = filteredLogs.slice(startIndex, endIndex)
+  
+  // Reset to first page when filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [clientFilter])
+  
+  const toggleLogExpansion = (index: number) => {
+    const newExpanded = new Set(expandedLogs)
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index)
+    } else {
+      newExpanded.add(index)
+    }
+    setExpandedLogs(newExpanded)
+  }
+
+  return (
+    <div className="w-full">
+      <div className="bg-gray-800 rounded-lg border border-gray-700">
+        <div className="border-b border-gray-700 p-6">
+          <div className="flex items-center gap-3">
+            <Settings className="w-6 h-6 text-blue-500" />
+            <div>
+              <h2 className="text-xl font-semibold text-gray-100">Ping Admin Panel</h2>
+              <p className="text-sm text-gray-400 mt-1">Client Credentials Authentication & API Management</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {/* Tab Navigation */}
+          <div className="flex gap-2 mb-6 bg-gray-900 rounded-lg p-1 border border-gray-700">
+            <button
+              onClick={() => setActiveTab('credentials')}
+              className={`flex-1 py-3 px-6 text-sm font-medium transition-all rounded-md ${
+                activeTab === 'credentials'
+                  ? 'bg-gray-800 text-blue-400 border border-gray-600 shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+              }`}
+            >
+              Credentials
+            </button>
+            <button
+              onClick={() => setActiveTab('api-calls')}
+              className={`flex-1 py-3 px-6 text-sm font-medium transition-all rounded-md ${
+                activeTab === 'api-calls'
+                  ? 'bg-gray-800 text-blue-400 border border-gray-600 shadow-sm'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                API Calls / Logs
+              </div>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'credentials' ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="metadata-endpoint" className="block text-sm font-medium text-gray-200 mb-2">
+                  Metadata Endpoint (Optional - for auto-discovery)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="metadata-endpoint"
+                    type="url"
+                    placeholder="https://auth.pingone.com/.../as/.well-known/openid-configuration"
+                    value={metadataEndpoint}
+                    onChange={(e) => setMetadataEndpoint(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={fetchMetadata}
+                    disabled={fetchingMetadata || !metadataEndpoint}
+                    className={`px-4 py-2 rounded-md text-white font-medium transition-colors flex items-center ${
+                      fetchingMetadata || !metadataEndpoint
+                        ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                  >
+                    {fetchingMetadata ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Fetch'
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Provide the .well-known/openid-configuration URL to auto-discover endpoints
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="token-endpoint" className="block text-sm font-medium text-gray-200 mb-2">
+                  Token Endpoint
+                </label>
+                <input
+                  id="token-endpoint"
+                  type="url"
+                  placeholder="https://auth.pingone.com/.../as/token"
+                  value={tokenEndpoint}
+                  onChange={(e) => setTokenEndpoint(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="client-id" className="block text-sm font-medium text-gray-200 mb-2">
+                  Client ID
+                </label>
+                <input
+                  id="client-id"
+                  placeholder="Enter client ID"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="client-secret" className="block text-sm font-medium text-gray-200 mb-2">
+                  Client Secret
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    id="client-secret"
+                    type={showSecret ? 'text' : 'password'}
+                    placeholder="Enter client secret"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecret(!showSecret)}
+                    className="absolute right-2 text-gray-400 hover:text-gray-200"
+                  >
+                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Secret is stored in memory only and cleared on refresh
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="scopes" className="block text-sm font-medium text-gray-200 mb-2">
+                  Scopes
+                </label>
+                <input
+                  id="scopes"
+                  placeholder="openid profile email fr:idm:* fr:am:*"
+                  value={scopes}
+                  onChange={(e) => setScopes(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Space-separated list of scopes. Includes fr:am:* and fr:idm:* wildcards by default for ForgeRock access.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={requestToken} 
+                  disabled={loading || !clientId || !clientSecret || !tokenEndpoint}
+                  className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md text-white font-medium transition-colors ${
+                    loading || !clientId || !clientSecret || !tokenEndpoint
+                      ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Requesting...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Request Token
+                    </>
+                  )}
+                </button>
+                {isTokenValid && (
+                  <button 
+                    onClick={clearToken}
+                    className="px-4 py-2 border border-gray-600 rounded-md text-gray-200 hover:bg-gray-700 transition-colors"
+                  >
+                    Clear Token
+                  </button>
+                )}
+              </div>
+
+              {isTokenValid && (
+                <div className="bg-green-900/20 border border-green-800 rounded-md p-4">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-400 mt-0.5" />
+                    <div className="text-sm text-green-300">
+                      Token valid until {tokenExpiry?.toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-900/20 border border-red-800 rounded-md p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-red-400 mt-0.5" />
+                    <div className="text-sm text-red-300">{error}</div>
+                  </div>
+                </div>
+              )}
+
+              {success && !isTokenValid && (
+                <div className="bg-green-900/20 border border-green-800 rounded-md p-4">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-400 mt-0.5" />
+                    <div className="text-sm text-green-300">{success}</div>
+                  </div>
+                </div>
+              )}
+
+              {lastCurl && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-gray-200">cURL Command</label>
+                    <button
+                      onClick={() => copyToClipboard(lastCurl, 'curl')}
+                      className="text-gray-400 hover:text-gray-200 p-1"
+                    >
+                      {copied === 'curl' ? (
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <textarea
+                    value={lastCurl}
+                    readOnly
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-gray-100 font-mono text-xs"
+                    rows={5}
+                  />
+                </div>
+              )}
+
+              {accessToken && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-gray-200">Access Token</label>
+                    <button
+                      onClick={() => copyToClipboard(accessToken, 'token')}
+                      className="text-gray-400 hover:text-gray-200 p-1"
+                    >
+                      {copied === 'token' ? (
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <textarea
+                    value={accessToken}
+                    readOnly
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-gray-100 font-mono text-xs"
+                    rows={3}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Log Fetching Section */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-100 mb-4 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-400" />
+                  Log Retrieval
+                </h3>
+                
+                <div className="space-y-4">
+                  {/* API Authentication Section */}
+                  <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                    <h4 className="text-sm font-medium text-gray-200 mb-3">API Authentication (Required)</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="log-api-key" className="block text-sm font-medium text-gray-200 mb-2">
+                          API Key *
+                        </label>
+                        <input
+                          id="log-api-key"
+                          type="text"
+                          placeholder="Enter API key"
+                          value={logApiKey}
+                          onChange={(e) => setLogApiKey(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="log-api-secret" className="block text-sm font-medium text-gray-200 mb-2">
+                          API Secret *
+                        </label>
+                        <div className="relative flex items-center">
+                          <input
+                            id="log-api-secret"
+                            type={showLogSecret ? 'text' : 'password'}
+                            placeholder="Enter API secret"
+                            value={logApiSecret}
+                            onChange={(e) => setLogApiSecret(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowLogSecret(!showLogSecret)}
+                            className="absolute right-2 text-gray-400 hover:text-gray-200"
+                          >
+                            {showLogSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Use x-api-key and x-api-secret headers per Ping AIC documentation. API secret is stored in memory only.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="log-endpoint" className="block text-sm font-medium text-gray-200 mb-2">
+                        Log Endpoint Base URL
+                      </label>
+                      <input
+                        id="log-endpoint"
+                        type="url"
+                        placeholder="https://tenant.forgeblocks.com/monitoring/logs"
+                        value={logEndpoint}
+                        onChange={(e) => setLogEndpoint(e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Auto-populated. Format: /monitoring/logs?source={'<source>'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="log-source" className="block text-sm font-medium text-gray-200 mb-2">
+                        Log Source *
+                      </label>
+                      <select
+                        id="log-source"
+                        value={logSource}
+                        onChange={(e) => setLogSource(e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="am-core">am-core (AM Core)</option>
+                        <option value="am-access">am-access (Access Audit)</option>
+                        <option value="am-activity">am-activity (Activity Audit)</option>
+                        <option value="am-authentication">am-authentication (Authentication Audit)</option>
+                        <option value="am-config">am-config (Config Audit)</option>
+                        <option value="idm-core">idm-core (IDM Core)</option>
+                        <option value="idm-access">idm-access (IDM Access)</option>
+                        <option value="idm-activity">idm-activity (IDM Activity)</option>
+                        <option value="idm-authentication">idm-authentication (IDM Authentication)</option>
+                        <option value="idm-config">idm-config (IDM Config)</option>
+                        <option value="idm-sync">idm-sync (IDM Sync)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Filter Mode Toggle */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-2">
+                      Filter Mode
+                    </label>
+                    <div className="flex gap-2 bg-gray-900 rounded-lg p-1 border border-gray-700">
+                      <button
+                        onClick={() => setFilterMode('builder')}
+                        className={`flex-1 py-2 px-4 text-sm font-medium transition-all rounded-md ${
+                          filterMode === 'builder'
+                            ? 'bg-gray-800 text-blue-400 border border-gray-600'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                        }`}
+                      >
+                        Filter Builder
+                      </button>
+                      <button
+                        onClick={() => setFilterMode('custom')}
+                        className={`flex-1 py-2 px-4 text-sm font-medium transition-all rounded-md ${
+                          filterMode === 'custom'
+                            ? 'bg-gray-800 text-blue-400 border border-gray-600'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                        }`}
+                      >
+                        Custom Query
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Filter Builder UI */}
+                  {filterMode === 'builder' ? (
+                    <div className="space-y-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor="log-level" className="block text-sm font-medium text-gray-200 mb-2">
+                            Log Level
+                          </label>
+                          <select
+                            id="log-level"
+                            value={logLevel}
+                            onChange={(e) => setLogLevel(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="">All Levels</option>
+                            <option value="FATAL">FATAL</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="WARN">WARN</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="INFO">INFO</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="TRACE">TRACE</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label htmlFor="page-size" className="block text-sm font-medium text-gray-200 mb-2">
+                            Page Size
+                          </label>
+                          <input
+                            id="page-size"
+                            type="number"
+                            placeholder="50"
+                            value={logPageSize}
+                            onChange={(e) => setLogPageSize(e.target.value)}
+                            min="1"
+                            max="1000"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="text-sm font-medium text-gray-200">Time Range</label>
+                          <button
+                            onClick={() => {
+                              const now = new Date()
+                              const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+                              setBeginTime(yesterday.toISOString())
+                              setEndTime(now.toISOString())
+                            }}
+                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                          >
+                            Reset to Last 24 Hours
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label htmlFor="begin-time" className="block text-xs font-medium text-gray-300 mb-1">
+                              Begin Time
+                            </label>
+                            <input
+                              id="begin-time"
+                              type="datetime-local"
+                              value={beginTime ? formatDateForInput(new Date(beginTime)) : ''}
+                              onChange={(e) => setBeginTime(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label htmlFor="end-time" className="block text-xs font-medium text-gray-300 mb-1">
+                              End Time
+                            </label>
+                            <input
+                              id="end-time"
+                              type="datetime-local"
+                              value={endTime ? formatDateForInput(new Date(endTime)) : ''}
+                              onChange={(e) => setEndTime(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {nextPageCookie && (
+                        <div>
+                          <label htmlFor="page-cookie" className="block text-sm font-medium text-gray-200 mb-2">
+                            Page Cookie (for pagination)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              id="page-cookie"
+                              type="text"
+                              value={logPageCookie}
+                              onChange={(e) => setLogPageCookie(e.target.value)}
+                              placeholder="Use cookie from previous response"
+                              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <button
+                              onClick={() => setLogPageCookie(nextPageCookie)}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-sm"
+                            >
+                              Use Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
+                      <div>
+                        <label htmlFor="custom-filter" className="block text-sm font-medium text-gray-200 mb-2">
+                          Custom Query Filter
+                        </label>
+                        <textarea
+                          id="custom-filter"
+                          placeholder='e.g., level eq "ERROR" and timestamp ge "2024-01-01T00:00:00Z"'
+                          value={customFilter}
+                          onChange={(e) => setCustomFilter(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                          rows={3}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                          Use CREST query filter syntax. Common fields: level, timestamp, message, transactionId. 
+                          Note: beginTime/endTime are set separately above.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor="page-size-custom" className="block text-sm font-medium text-gray-200 mb-2">
+                            Page Size
+                          </label>
+                          <input
+                            id="page-size-custom"
+                            type="number"
+                            placeholder="50"
+                            value={logPageSize}
+                            onChange={(e) => setLogPageSize(e.target.value)}
+                            min="1"
+                            max="1000"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        {nextPageCookie && (
+                          <div>
+                            <label htmlFor="page-cookie-custom" className="block text-sm font-medium text-gray-200 mb-2">
+                              Page Cookie
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                id="page-cookie-custom"
+                                type="text"
+                                value={logPageCookie}
+                                onChange={(e) => setLogPageCookie(e.target.value)}
+                                className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400"
+                              />
+                              <button
+                                onClick={() => setLogPageCookie(nextPageCookie)}
+                                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={fetchLogs}
+                      disabled={fetchingLogs || !logEndpoint || !logApiKey || !logApiSecret}
+                      className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md text-white font-medium transition-colors ${
+                        fetchingLogs || !logEndpoint || !logApiKey || !logApiSecret
+                          ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {fetchingLogs ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Fetching Logs...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="mr-2 h-4 w-4" />
+                          Fetch Logs
+                        </>
+                      )}
+                    </button>
+                    
+                    {logs.length > 0 && (
+                      <button
+                        onClick={downloadLogs}
+                        className="px-4 py-2 border border-gray-600 rounded-md text-gray-200 hover:bg-gray-700 transition-colors flex items-center"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Download JSON
+                      </button>
+                    )}
+                  </div>
+
+                  {logsCurl && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm font-medium text-gray-200">cURL Command</label>
+                        <button
+                          onClick={() => copyToClipboard(logsCurl, 'logs-curl')}
+                          className="text-gray-400 hover:text-gray-200 p-1"
+                        >
+                          {copied === 'logs-curl' ? (
+                            <CheckCircle className="h-4 w-4 text-green-400" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <textarea
+                        value={logsCurl}
+                        readOnly
+                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-gray-100 font-mono text-xs"
+                        rows={3}
+                      />
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="bg-red-900/20 border border-red-800 rounded-md p-4">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-400 mt-0.5" />
+                        <div className="text-sm text-red-300">{error}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {logs.length > 0 && (
+                    <div className="space-y-4">
+                      {/* Log Display Controls */}
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Search className="h-4 w-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search logs..."
+                            value={clientFilter}
+                            onChange={(e) => setClientFilter(e.target.value)}
+                            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-400">View:</label>
+                          <button
+                            onClick={() => setLogViewMode('table')}
+                            className={`p-2 rounded ${logViewMode === 'table' ? 'bg-gray-700 text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                            title="Table View"
+                          >
+                            <Table className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setLogViewMode('json')}
+                            className={`p-2 rounded ${logViewMode === 'json' ? 'bg-gray-700 text-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                            title="JSON View"
+                          >
+                            <Code className="h-4 w-4" />
+                          </button>
+                        </div>
+                        
+                        <select
+                          value={logsPerPage}
+                          onChange={(e) => setLogsPerPage(Number(e.target.value))}
+                          className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 text-sm"
+                        >
+                          <option value={10}>10 per page</option>
+                          <option value={25}>25 per page</option>
+                          <option value={50}>50 per page</option>
+                          <option value={100}>100 per page</option>
+                        </select>
+                      </div>
+
+                      {/* Stats Bar */}
+                      <div className="flex justify-between items-center text-sm text-gray-400">
+                        <span>
+                          Showing {startIndex + 1}-{Math.min(endIndex, filteredLogs.length)} of {filteredLogs.length} filtered logs
+                          {clientFilter && ` (${logs.length} total)`}
+                        </span>
+                        <span>
+                          Page {currentPage} of {totalPages || 1}
+                        </span>
+                      </div>
+
+                      {/* Log Display */}
+                      <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+                        {logViewMode === 'table' ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full table-fixed">
+                              <colgroup>
+                                <col className="w-[180px]" />
+                                <col className="w-[100px]" />
+                                <col className="w-auto" />
+                                <col className="w-[250px]" />
+                              </colgroup>
+                              <thead className="bg-gray-800 border-b border-gray-700">
+                                <tr className="text-xs text-gray-400">
+                                  <th className="text-left p-3">Timestamp</th>
+                                  <th className="text-left p-3">Level</th>
+                                  <th className="text-left p-3">Message / Logger</th>
+                                  <th className="text-left p-3">Details</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-700">
+                                {paginatedLogs.map((log, index) => {
+                                  const globalIndex = startIndex + index
+                                  const isExpanded = expandedLogs.has(globalIndex)
+                                  
+                                  // Extract data from nested payload or use direct fields
+                                  const timestamp = log.payload?.timestamp || log.timestamp
+                                  const level = log.payload?.level || log.level
+                                  const message = log.payload?.message || log.message
+                                  const transactionId = log.payload?.transactionId || log.payload?.mdc?.transactionId
+                                  const logger = log.payload?.logger
+                                  const thread = log.payload?.thread
+                                  const source = log.source
+                                  
+                                  return (
+                                    <tr key={globalIndex} className="hover:bg-gray-800/50 transition-colors">
+                                      <td className="p-3 text-xs text-gray-300 whitespace-nowrap">
+                                        {timestamp ? new Date(timestamp).toLocaleString() : 'N/A'}
+                                      </td>
+                                      <td className="p-3">
+                                        <span className={`text-xs px-2 py-1 rounded-full ${
+                                          level === 'ERROR' ? 'bg-red-900/50 text-red-400' :
+                                          level === 'WARN' ? 'bg-yellow-900/50 text-yellow-400' :
+                                          level === 'INFO' ? 'bg-blue-900/50 text-blue-400' :
+                                          level === 'DEBUG' ? 'bg-gray-700 text-gray-400' :
+                                          level === 'TRACE' ? 'bg-purple-900/50 text-purple-400' :
+                                          'bg-gray-700 text-gray-400'
+                                        }`}>
+                                          {level || 'N/A'}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-xs text-gray-300">
+                                        <div className="space-y-1">
+                                          <div className="font-medium break-words whitespace-normal leading-relaxed">
+                                            {message || 'No message'}
+                                          </div>
+                                          {logger && (
+                                            <div className="text-gray-500 text-[10px] break-all opacity-75 mt-1">
+                                              {logger}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="p-3">
+                                        <div className="flex items-start gap-2">
+                                          <div className="text-[10px] text-gray-500 space-y-1">
+                                            {source && <div>Source: {source}</div>}
+                                            {transactionId && <div className="truncate max-w-[150px]" title={transactionId}>TxID: {transactionId}</div>}
+                                            {thread && <div className="truncate max-w-[150px]" title={thread}>Thread: {thread}</div>}
+                                          </div>
+                                          <button
+                                            onClick={() => toggleLogExpansion(globalIndex)}
+                                            className="text-gray-400 hover:text-gray-200 p-1 ml-auto"
+                                          >
+                                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                          </button>
+                                        </div>
+                                        {isExpanded && (
+                                          <div className="mt-2 p-2 bg-gray-800 rounded text-xs text-gray-300 font-mono overflow-x-auto max-w-full">
+                                            <pre className="whitespace-pre-wrap break-words">{JSON.stringify(log, null, 2)}</pre>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="p-4 max-h-[600px] overflow-y-auto">
+                            <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                              {JSON.stringify(paginatedLogs, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="flex justify-center items-center gap-2">
+                          <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                            className="p-2 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <ChevronLeft className="h-4 w-4 -ml-2" />
+                          </button>
+                          <button
+                            onClick={() => setCurrentPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="p-2 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          
+                          <div className="flex gap-1">
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                              let pageNum
+                              if (totalPages <= 5) {
+                                pageNum = i + 1
+                              } else if (currentPage <= 3) {
+                                pageNum = i + 1
+                              } else if (currentPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i
+                              } else {
+                                pageNum = currentPage - 2 + i
+                              }
+                              
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => setCurrentPage(pageNum)}
+                                  className={`px-3 py-1 rounded ${
+                                    currentPage === pageNum
+                                      ? 'bg-blue-600 text-white'
+                                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          
+                          <button
+                            onClick={() => setCurrentPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="p-2 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="p-2 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                            <ChevronRight className="h-4 w-4 -ml-2" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Coming Soon Section */}
+              <div className="bg-blue-900/20 border border-blue-800 rounded-md p-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5" />
+                  <div>
+                    <div className="text-sm text-blue-300 mb-2">
+                      More API calls coming soon:
+                    </div>
+                    <ul className="list-disc list-inside text-sm text-blue-200 space-y-1">
+                      <li>IDM User Management calls</li>
+                      <li>Custom endpoint calls</li>
+                      <li>Other admin operations</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
