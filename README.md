@@ -2,9 +2,15 @@
 
 A comprehensive authentication testing and administration dashboard featuring **Ping AIC OIDC testing** and Gigya account management.
 
-## 🚀 Primary Feature: Ping AIC OIDC Tester
+## 🚀 Primary Features
+
+### Ping AIC OIDC Tester
 
 A browser-based OIDC flow tester designed for **Ping AIC migration** and testing. Get access tokens quickly without complex setup.
+
+### Ping Admin Panel
+
+Comprehensive administration panel for Ping AIC with client credentials authentication, log retrieval, and custom IDM endpoint management.
 
 ![Ping AIC OIDC Tester Interface](./docs/ping-aic-tester.png)
 <!-- Place the Ping AIC tester screenshot in docs/ping-aic-tester.png -->
@@ -58,6 +64,55 @@ A browser-based OIDC flow tester designed for **Ping AIC migration** and testing
   - 🟢 Green: > 1 minute remaining
   - 🟡 Yellow: < 1 minute remaining
   - 🔴 Red: Expired
+
+## 🔐 Ping Admin Panel
+
+### Features
+
+- **Client Credentials Authentication**
+  - OAuth 2.0 client credentials flow
+  - Secure token management (session storage)
+  - Support for custom scopes (fr:idm:*, fr:am:*)
+  - Metadata endpoint auto-discovery
+
+- **Log Retrieval System**
+  - Real-time log fetching with API key/secret authentication
+  - Advanced filtering (level, time range, custom queries)
+  - Client-side search and pagination
+  - Table and JSON view modes
+  - Export logs as JSON
+
+- **Custom IDM Endpoints**
+  - NFL User Profile management
+  - Schema configuration retrieval
+  - Field mapping support
+
+### Finding API Keys & Secrets in Ping AIC Console
+
+1. **Log into Ping AIC Console** at your tenant URL
+2. Navigate to **Tenant Settings** → **API Credentials**
+3. Click **"+ New Credential"** or use an existing credential
+4. Select appropriate scopes:
+   - `fr:idm:*` - IDM operations
+   - `fr:am:*` - AM operations  
+   - `fr:idc:analytics:*` - Log retrieval
+5. **Copy the API Key and Secret** (⚠️ Secret is only shown once!)
+6. Store credentials securely
+
+### Log Sources
+
+Available log sources in Ping AIC:
+- `am-core` - AM Core logs
+- `am-access` - Access audit logs
+- `am-activity` - Activity audit logs
+- `am-authentication` - Authentication audit logs
+- `am-config` - Configuration audit logs
+- `idm-core` - IDM Core logs
+- `idm-access` - IDM Access logs
+- `idm-activity` - IDM Activity logs
+- `idm-authentication` - IDM Authentication logs
+- `idm-config` - IDM Configuration logs
+- `idm-sync` - IDM Synchronization logs
 
 ---
 

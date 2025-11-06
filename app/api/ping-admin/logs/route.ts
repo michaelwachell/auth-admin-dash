@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to fetch logs', 
-        details: error instanceof Error ? error.message : 'Unknown error',
-        url: body?.logEndpoint || 'unknown'
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )

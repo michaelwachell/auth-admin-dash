@@ -36,9 +36,10 @@ interface LogEntry {
 export default function PingAdminPanel() {
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
+  const [tenantUrl, setTenantUrl] = useState('')
   const [tokenEndpoint, setTokenEndpoint] = useState('')
   const [metadataEndpoint, setMetadataEndpoint] = useState('')
-  const [scopes, setScopes] = useState('openid profile email fr:idm:* fr:am:*')
+  const [scopes, setScopes] = useState('fr:idm:* fr:am:*')
   const [accessToken, setAccessToken] = useState('')
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null)
   const [showSecret, setShowSecret] = useState(false)
@@ -48,10 +49,18 @@ export default function PingAdminPanel() {
   const [success, setSuccess] = useState('')
   const [lastCurl, setLastCurl] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'credentials' | 'api-calls'>('credentials')
+  const [activeTab, setActiveTab] = useState<'credentials' | 'api-calls'>(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('ping_admin_active_tab')
+      if (saved === 'credentials' || saved === 'api-calls') {
+        return saved as 'credentials' | 'api-calls'
+      }
+    }
+    return 'credentials'
+  })
   
   // Log fetching states
-  const [logEndpoint, setLogEndpoint] = useState('')
   const [logApiKey, setLogApiKey] = useState('')
   const [logApiSecret, setLogApiSecret] = useState('')
   const [showLogSecret, setShowLogSecret] = useState(false)
@@ -75,6 +84,15 @@ export default function PingAdminPanel() {
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set())
   const [logViewMode, setLogViewMode] = useState<'json' | 'table'>('table')
   
+  // Custom endpoint states
+  const [nflUserId, setNflUserId] = useState('')
+  const [nflUserData, setNflUserData] = useState('')
+  const [nflUserMethod, setNflUserMethod] = useState<'GET' | 'PUT' | 'PATCH'>('GET')
+  const [schemaFieldName, setSchemaFieldName] = useState('')
+  const [customEndpointLoading, setCustomEndpointLoading] = useState(false)
+  const [customEndpointResult, setCustomEndpointResult] = useState<any>(null)
+  const [customEndpointCurl, setCustomEndpointCurl] = useState('')
+  
   // Helper function to format date for datetime-local input
   const formatDateForInput = (date: Date) => {
     const year = date.getFullYear()
@@ -90,17 +108,17 @@ export default function PingAdminPanel() {
     const storedClientId = localStorage.getItem('ping_admin_client_id')
     const storedToken = sessionStorage.getItem('ping_admin_access_token')
     const storedExpiry = sessionStorage.getItem('ping_admin_token_expiry')
+    const storedTenant = localStorage.getItem('ping_admin_tenant_url')
     const storedEndpoint = localStorage.getItem('ping_admin_token_endpoint')
     const storedMetadata = localStorage.getItem('ping_admin_metadata_endpoint')
-    const storedLogEndpoint = localStorage.getItem('ping_admin_log_endpoint')
     const storedLogApiKey = localStorage.getItem('ping_admin_log_api_key')
 
     if (storedClientId) setClientId(storedClientId)
     if (storedToken) setAccessToken(storedToken)
     if (storedExpiry) setTokenExpiry(new Date(storedExpiry))
+    if (storedTenant) setTenantUrl(storedTenant)
     if (storedEndpoint) setTokenEndpoint(storedEndpoint)
     if (storedMetadata) setMetadataEndpoint(storedMetadata)
-    if (storedLogEndpoint) setLogEndpoint(storedLogEndpoint)
     if (storedLogApiKey) setLogApiKey(storedLogApiKey)
     
     // Set default time range to last 24 hours
@@ -109,6 +127,11 @@ export default function PingAdminPanel() {
     setBeginTime(yesterday.toISOString())
     setEndTime(now.toISOString())
   }, [])
+  
+  // Save active tab when it changes
+  useEffect(() => {
+    localStorage.setItem('ping_admin_active_tab', activeTab)
+  }, [activeTab])
 
   // Save API key to localStorage when changed
   useEffect(() => {
@@ -118,32 +141,30 @@ export default function PingAdminPanel() {
   }, [logApiKey])
 
   useEffect(() => {
+    if (tenantUrl) {
+      localStorage.setItem('ping_admin_tenant_url', tenantUrl)
+    }
+  }, [tenantUrl])
+
+  useEffect(() => {
     if (tokenEndpoint) {
       localStorage.setItem('ping_admin_token_endpoint', tokenEndpoint)
       
-      // Auto-construct log endpoint from token endpoint
+      // Auto-construct tenant URL from token endpoint
       // Handle both .forgeblocks.com and .id.forgerock.io domains
       const forgeblocksMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
       const forgerockMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
       
       if (forgeblocksMatch) {
-        const tenant = forgeblocksMatch[1]
-        const constructedLogEndpoint = `https://${tenant}.forgeblocks.com/monitoring/logs`
-        setLogEndpoint(constructedLogEndpoint)
+        const hostname = forgeblocksMatch[0]
+        setTenantUrl(hostname)
       } else if (forgerockMatch) {
         // For forgerock.io domains, use the full hostname
         const hostname = forgerockMatch[0]
-        const constructedLogEndpoint = `${hostname}/monitoring/logs`
-        setLogEndpoint(constructedLogEndpoint)
+        setTenantUrl(hostname)
       }
     }
   }, [tokenEndpoint])
-
-  useEffect(() => {
-    if (logEndpoint) {
-      localStorage.setItem('ping_admin_log_endpoint', logEndpoint)
-    }
-  }, [logEndpoint])
 
   useEffect(() => {
     if (metadataEndpoint) {
@@ -268,19 +289,17 @@ export default function PingAdminPanel() {
       if (data.token_endpoint) {
         setTokenEndpoint(data.token_endpoint)
         
-        // Try to construct log endpoint from the tenant URL
+        // Try to construct tenant URL from the token endpoint
         const forgeblocksMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
         const forgerockMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
         
         if (forgeblocksMatch) {
-          const tenant = forgeblocksMatch[1]
-          const constructedLogEndpoint = `https://${tenant}.forgeblocks.com/monitoring/logs`
-          setLogEndpoint(constructedLogEndpoint)
+          const hostname = forgeblocksMatch[0]
+          setTenantUrl(hostname)
         } else if (forgerockMatch) {
           // For forgerock.io domains, use the full hostname
           const hostname = forgerockMatch[0]
-          const constructedLogEndpoint = `${hostname}/monitoring/logs`
-          setLogEndpoint(constructedLogEndpoint)
+          setTenantUrl(hostname)
         }
         
         setSuccess('Endpoints discovered from metadata!')
@@ -295,8 +314,8 @@ export default function PingAdminPanel() {
   }
   
   const fetchLogs = async () => {
-    if (!logEndpoint || !logApiKey || !logApiSecret || !logSource) {
-      setError('Please provide log endpoint, API key, API secret, and select a source')
+    if (!tenantUrl || !logApiKey || !logApiSecret || !logSource) {
+      setError('Please provide tenant URL, API key, API secret, and select a source')
       return
     }
 
@@ -321,14 +340,11 @@ export default function PingAdminPanel() {
       params.append('_queryFilter', `level eq "${logLevel}"`)
     }
     
-    // Note: Ping AIC docs don't show _pageSize or _pagedResultsCookie parameters
-    // The API limits to 1000 logs per request by default
-    
-    // Ensure logEndpoint doesn't have trailing slash
-    const baseEndpoint = logEndpoint.replace(/\/$/, '')
+    // Construct log endpoint from tenant URL
+    const logEndpoint = `${tenantUrl}/monitoring/logs`
     
     // Construct URL according to Ping AIC format: /monitoring/logs with source as query param
-    const url = `${baseEndpoint}${params.toString() ? '?' + params.toString() : ''}`
+    const url = `${logEndpoint}${params.toString() ? '?' + params.toString() : ''}`
     
     console.log('Fetching logs from:', url)
     
@@ -412,6 +428,120 @@ export default function PingAdminPanel() {
       newExpanded.add(index)
     }
     setExpandedLogs(newExpanded)
+  }
+
+  const callNflUserEndpoint = async (method: 'GET' | 'PUT' | 'PATCH') => {
+    if (!tenantUrl || !nflUserId || !accessToken) {
+      setError('Please provide tenant URL, user ID, and ensure you have a valid token')
+      return
+    }
+
+    setCustomEndpointLoading(true)
+    setError('')
+    setCustomEndpointResult(null)
+    
+    const endpoint = `${tenantUrl}/openidm/endpoint/nfluser/${nflUserId}`
+    
+    let data = null
+    if (method !== 'GET' && nflUserData) {
+      try {
+        data = JSON.parse(nflUserData)
+      } catch (e) {
+        setError('Invalid JSON in user data field')
+        setCustomEndpointLoading(false)
+        return
+      }
+    }
+    
+    // Build curl command
+    let curl = `curl -X ${method} "${endpoint}" \\
+  -H "Authorization: Bearer ${accessToken}" \\
+  -H "Accept: application/json"`
+    
+    if (data) {
+      curl += ` \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(data, null, 2)}'`
+    }
+    
+    setCustomEndpointCurl(curl)
+
+    try {
+      const response = await fetch('/api/ping-admin/custom-endpoint', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint,
+          method,
+          accessToken,
+          data
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to call endpoint')
+      }
+
+      setCustomEndpointResult(result)
+      setSuccess(`${method} request to NFL User endpoint successful!`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to call endpoint')
+    } finally {
+      setCustomEndpointLoading(false)
+    }
+  }
+
+  const callSchemaConfigEndpoint = async () => {
+    if (!tenantUrl || !accessToken) {
+      setError('Please provide tenant URL and ensure you have a valid token')
+      return
+    }
+
+    setCustomEndpointLoading(true)
+    setError('')
+    setCustomEndpointResult(null)
+    
+    const endpoint = schemaFieldName 
+      ? `${tenantUrl}/openidm/endpoint/nflschemaconfig/${schemaFieldName}`
+      : `${tenantUrl}/openidm/endpoint/nflschemaconfig`
+    
+    // Build curl command
+    const curl = `curl -X GET "${endpoint}" \\
+  -H "Authorization: Bearer ${accessToken}" \\
+  -H "Accept: application/json"`
+    
+    setCustomEndpointCurl(curl)
+
+    try {
+      const response = await fetch('/api/ping-admin/custom-endpoint', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint,
+          method: 'GET',
+          accessToken
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to call endpoint')
+      }
+
+      setCustomEndpointResult(result)
+      setSuccess('Schema configuration retrieved successfully!')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to call endpoint')
+    } finally {
+      setCustomEndpointLoading(false)
+    }
   }
 
   return (
@@ -550,13 +680,13 @@ export default function PingAdminPanel() {
                 </label>
                 <input
                   id="scopes"
-                  placeholder="openid profile email fr:idm:* fr:am:*"
+                  placeholder="fr:idm:* fr:am:*"
                   value={scopes}
                   onChange={(e) => setScopes(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Space-separated list of scopes. Includes fr:am:* and fr:idm:* wildcards by default for ForgeRock access.
+                  Space-separated list of scopes. Default includes fr:am:* and fr:idm:* wildcards for ForgeRock/Ping AIC access.
                 </p>
               </div>
 
@@ -725,47 +855,28 @@ export default function PingAdminPanel() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="log-endpoint" className="block text-sm font-medium text-gray-200 mb-2">
-                        Log Endpoint Base URL
-                      </label>
-                      <input
-                        id="log-endpoint"
-                        type="url"
-                        placeholder="https://tenant.forgeblocks.com/monitoring/logs"
-                        value={logEndpoint}
-                        onChange={(e) => setLogEndpoint(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">
-                        Auto-populated. Format: /monitoring/logs?source={'<source>'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label htmlFor="log-source" className="block text-sm font-medium text-gray-200 mb-2">
-                        Log Source *
-                      </label>
-                      <select
-                        id="log-source"
-                        value={logSource}
-                        onChange={(e) => setLogSource(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="am-core">am-core (AM Core)</option>
-                        <option value="am-access">am-access (Access Audit)</option>
-                        <option value="am-activity">am-activity (Activity Audit)</option>
-                        <option value="am-authentication">am-authentication (Authentication Audit)</option>
-                        <option value="am-config">am-config (Config Audit)</option>
-                        <option value="idm-core">idm-core (IDM Core)</option>
-                        <option value="idm-access">idm-access (IDM Access)</option>
-                        <option value="idm-activity">idm-activity (IDM Activity)</option>
-                        <option value="idm-authentication">idm-authentication (IDM Authentication)</option>
-                        <option value="idm-config">idm-config (IDM Config)</option>
-                        <option value="idm-sync">idm-sync (IDM Sync)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label htmlFor="log-source" className="block text-sm font-medium text-gray-200 mb-2">
+                      Log Source *
+                    </label>
+                    <select
+                      id="log-source"
+                      value={logSource}
+                      onChange={(e) => setLogSource(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="am-core">am-core (AM Core)</option>
+                      <option value="am-access">am-access (Access Audit)</option>
+                      <option value="am-activity">am-activity (Activity Audit)</option>
+                      <option value="am-authentication">am-authentication (Authentication Audit)</option>
+                      <option value="am-config">am-config (Config Audit)</option>
+                      <option value="idm-core">idm-core (IDM Core)</option>
+                      <option value="idm-access">idm-access (IDM Access)</option>
+                      <option value="idm-activity">idm-activity (IDM Activity)</option>
+                      <option value="idm-authentication">idm-authentication (IDM Authentication)</option>
+                      <option value="idm-config">idm-config (IDM Config)</option>
+                      <option value="idm-sync">idm-sync (IDM Sync)</option>
+                    </select>
                   </div>
 
                   {/* Filter Mode Toggle */}
@@ -973,9 +1084,9 @@ export default function PingAdminPanel() {
                   <div className="flex gap-2">
                     <button
                       onClick={fetchLogs}
-                      disabled={fetchingLogs || !logEndpoint || !logApiKey || !logApiSecret}
+                      disabled={fetchingLogs || !tenantUrl || !logApiKey || !logApiSecret}
                       className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md text-white font-medium transition-colors ${
-                        fetchingLogs || !logEndpoint || !logApiKey || !logApiSecret
+                        fetchingLogs || !tenantUrl || !logApiKey || !logApiSecret
                           ? 'bg-gray-600 cursor-not-allowed opacity-50'
                           : 'bg-blue-600 hover:bg-blue-700'
                       }`}
@@ -1260,19 +1371,185 @@ export default function PingAdminPanel() {
                 </div>
               </div>
 
-              {/* Coming Soon Section */}
-              <div className="bg-blue-900/20 border border-blue-800 rounded-md p-4">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <div className="text-sm text-blue-300 mb-2">
-                      More API calls coming soon:
+              {/* Custom IDM Endpoints Section */}
+              <div className="space-y-4 mt-6">
+                <h3 className="text-lg font-medium text-gray-100 mb-4 flex items-center gap-2">
+                  <Code className="h-5 w-5 text-purple-400" />
+                  Custom IDM Endpoints
+                </h3>
+                
+                <div className="space-y-4">
+                  {/* NFL User Profile Endpoint */}
+                  <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                    <h4 className="text-sm font-medium text-gray-200 mb-3">NFL User Profile Endpoint</h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                      Custom endpoint for reading and updating NFL user profiles with field mapping
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">User ID</label>
+                        <input
+                          type="text"
+                          placeholder="Enter user ID"
+                          value={nflUserId}
+                          onChange={(e) => setNflUserId(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">Method</label>
+                        <select
+                          value={nflUserMethod}
+                          onChange={(e) => setNflUserMethod(e.target.value as 'GET' | 'PUT' | 'PATCH')}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="GET">GET - Read Profile</option>
+                          <option value="PUT">PUT - Full Update</option>
+                          <option value="PATCH">PATCH - Partial Update</option>
+                        </select>
+                      </div>
+                      
+                      {nflUserMethod !== 'GET' && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-300 mb-1">User Data (JSON)</label>
+                          <textarea
+                            placeholder='{"favoriteTeam": "SF", "isMilitary": true}'
+                            value={nflUserData}
+                            onChange={(e) => setNflUserData(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+                            rows={3}
+                          />
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={() => callNflUserEndpoint(nflUserMethod)}
+                        disabled={!nflUserId || !isTokenValid || customEndpointLoading || (nflUserMethod !== 'GET' && !nflUserData)}
+                        className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {customEndpointLoading ? 'Loading...' : `Execute ${nflUserMethod} Request`}
+                      </button>
+                      
+                      <div className="text-xs text-gray-500">
+                        Endpoint: {tenantUrl}/openidm/endpoint/nfluser/{'{userId}'}
+                      </div>
+                      
+                      {customEndpointResult && (
+                        <div className="text-xs text-center text-green-400 animate-pulse">
+                          ✓ Response received - scroll down to view
+                        </div>
+                      )}
                     </div>
-                    <ul className="list-disc list-inside text-sm text-blue-200 space-y-1">
-                      <li>IDM User Management calls</li>
-                      <li>Custom endpoint calls</li>
-                      <li>Other admin operations</li>
-                    </ul>
+                  </div>
+                  
+                  {/* Schema Configuration Endpoint */}
+                  <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                    <h4 className="text-sm font-medium text-gray-200 mb-3">Schema Configuration Endpoint</h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                      Read-only endpoint to retrieve NFL user schema mapping configuration
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">Field Name (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="Leave empty for full schema"
+                          value={schemaFieldName}
+                          onChange={(e) => setSchemaFieldName(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        />
+                      </div>
+                      
+                      <button 
+                        onClick={callSchemaConfigEndpoint}
+                        disabled={!isTokenValid || customEndpointLoading}
+                        className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {customEndpointLoading ? 'Loading...' : 'GET Schema Config'}
+                      </button>
+                      
+                      <div className="text-xs text-gray-500">
+                        Endpoint: {tenantUrl}/openidm/endpoint/nflschemaconfig/{'{fieldName}'}
+                      </div>
+                      
+                      {customEndpointResult && (
+                        <div className="text-xs text-center text-green-400 animate-pulse">
+                          ✓ Response received - scroll down to view
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Custom Endpoint Response Section */}
+                  {customEndpointCurl && (
+                    <div className="space-y-2 mt-4">
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm font-medium text-gray-200">cURL Command</label>
+                        <button
+                          onClick={() => copyToClipboard(customEndpointCurl, 'custom-curl')}
+                          className="text-gray-400 hover:text-gray-200 p-1"
+                        >
+                          {copied === 'custom-curl' ? (
+                            <CheckCircle className="h-4 w-4 text-green-400" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <textarea
+                        value={customEndpointCurl}
+                        readOnly
+                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-gray-100 font-mono text-xs"
+                        rows={4}
+                      />
+                    </div>
+                  )}
+                  
+                  {customEndpointResult && (
+                    <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-gray-200">Response</label>
+                        <button
+                          onClick={() => copyToClipboard(JSON.stringify(customEndpointResult, null, 2), 'custom-result')}
+                          className="text-gray-400 hover:text-gray-200 p-1"
+                        >
+                          {copied === 'custom-result' ? (
+                            <CheckCircle className="h-4 w-4 text-green-400" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto">
+                        {JSON.stringify(customEndpointResult, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  
+                  {/* Help Section - At the very bottom */}
+                  <div className="bg-yellow-900/20 border border-yellow-800 rounded-md p-4 mt-6">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5" />
+                      <div>
+                        <div className="text-sm text-yellow-300 mb-2">
+                          Finding API Keys & Secrets in Ping AIC Console
+                        </div>
+                        <ol className="list-decimal list-inside text-xs text-yellow-200 space-y-1">
+                          <li>Log into Ping AIC Console</li>
+                          <li>Navigate to <strong>Tenant Settings</strong> → <strong>API Credentials</strong></li>
+                          <li>Click <strong>"+ New Credential"</strong> or use existing</li>
+                          <li>Select appropriate scopes (fr:idm:*, fr:am:*)</li>
+                          <li>Copy the API Key and Secret (secret only shown once!)</li>
+                          <li>For logs: Ensure "fr:idc:analytics:*" scope is included</li>
+                        </ol>
+                        <div className="mt-2 text-xs text-yellow-200">
+                          <strong>Note:</strong> Store API secrets securely. They cannot be retrieved after creation.
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
