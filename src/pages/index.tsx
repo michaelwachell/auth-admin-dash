@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { Shield, Lock, Key, Activity, Cloud, Settings } from 'lucide-react'
+import { Shield, Lock, LogOut, Key, Activity, Cloud, Settings, Search } from 'lucide-react'
 import UnlockForm from '@/components/UnlockForm'
+import LogoutForm from '@/components/LogoutForm'
+import SearchForm from '@/components/SearchForm'
 import ResponseViewer from '@/components/ResponseViewer'
 import Toast from '@/components/Toast'
 import PingAICTester from '@/components/PingAICTester'
 import PingAdminPanel from '../../components/PingAdminPanel'
-import { UnlockRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
+import { UnlockRequest, LogoutRequest, SearchRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'gigya' | 'ping' | 'admin'>('ping')
+  const [activeAction, setActiveAction] = useState<'unlock' | 'logout' | 'search'>('unlock')
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<GigyaResponse | null>(null)
   const [toast, setToast] = useState<{
@@ -35,6 +38,115 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('selected_tab', activeTab);
   }, [activeTab]);
+
+  const handleSearch = async (data: SearchRequest) => {
+    setLoading(true)
+    setResponse(null)
+
+    try {
+      const res = await fetch('/api/gigya/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+
+      const result: ApiResponse<GigyaResponse> = await res.json()
+
+      if (result.success && result.data) {
+        setResponse(result.data)
+        const totalCount = result.data.totalCount || 0
+        setToast({
+          show: true,
+          message: `Search completed! Found ${totalCount} account(s)`,
+          type: 'success'
+        })
+        
+        setRequestHistory(prev => [{
+          timestamp: new Date().toLocaleString(),
+          identifier: data.query,
+          identifierType: 'query' as any,
+          success: true
+        }, ...prev].slice(0, 5))
+      } else {
+        setResponse(result.data || { error: result.error })
+        setToast({
+          show: true,
+          message: result.error || 'Search failed',
+          type: 'error'
+        })
+        
+        setRequestHistory(prev => [{
+          timestamp: new Date().toLocaleString(),
+          identifier: data.query,
+          identifierType: 'query' as any,
+          success: false
+        }, ...prev].slice(0, 5))
+      }
+    } catch (error: any) {
+      setToast({
+        show: true,
+        message: error.message || 'An error occurred',
+        type: 'error'
+      })
+      setResponse({ error: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogout = async (data: LogoutRequest) => {
+    setLoading(true)
+    setResponse(null)
+
+    try {
+      const res = await fetch('/api/gigya/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+
+      const result: ApiResponse<GigyaResponse> = await res.json()
+
+      if (result.success && result.data) {
+        setResponse(result.data)
+        setToast({
+          show: true,
+          message: 'User logged out successfully!',
+          type: 'success'
+        })
+        
+        setRequestHistory(prev => [{
+          timestamp: new Date().toLocaleString(),
+          identifier: data.UID,
+          identifierType: 'UID',
+          success: true
+        }, ...prev].slice(0, 5))
+      } else {
+        setResponse(result.data || { error: result.error })
+        setToast({
+          show: true,
+          message: result.error || 'Failed to logout user',
+          type: 'error'
+        })
+        
+        setRequestHistory(prev => [{
+          timestamp: new Date().toLocaleString(),
+          identifier: data.UID,
+          identifierType: 'UID',
+          success: false
+        }, ...prev].slice(0, 5))
+      }
+    } catch (error: any) {
+      setToast({
+        show: true,
+        message: error.message || 'An error occurred',
+        type: 'error'
+      })
+      setResponse({ error: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleUnlock = async (data: UnlockRequest) => {
     setLoading(true)
@@ -171,13 +283,78 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column - Form */}
             <div className="lg:col-span-2 space-y-6">
+              {/* Action Selector */}
+              <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveAction('unlock')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      activeAction === 'unlock'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Unlock Account
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setActiveAction('logout')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      activeAction === 'logout'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <LogOut className="w-4 h-4" />
+                      Global Logout
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setActiveAction('search')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      activeAction === 'search'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <Search className="w-4 h-4" />
+                      Search Accounts
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               {/* Form Card */}
               <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <Lock className="w-5 h-5 text-blue-500" />
-                  <h2 className="text-lg font-medium text-gray-100">Unlock User Account</h2>
-                </div>
-                <UnlockForm onSubmit={handleUnlock} loading={loading} />
+                {activeAction === 'unlock' ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-6">
+                      <Lock className="w-5 h-5 text-blue-500" />
+                      <h2 className="text-lg font-medium text-gray-100">Unlock User Account</h2>
+                    </div>
+                    <UnlockForm onSubmit={handleUnlock} loading={loading} />
+                  </>
+                ) : activeAction === 'logout' ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-6">
+                      <LogOut className="w-5 h-5 text-red-500" />
+                      <h2 className="text-lg font-medium text-gray-100">Global User Logout</h2>
+                    </div>
+                    <LogoutForm onSubmit={handleLogout} loading={loading} />
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-6">
+                      <Search className="w-5 h-5 text-green-500" />
+                      <h2 className="text-lg font-medium text-gray-100">Search Accounts</h2>
+                    </div>
+                    <SearchForm onSubmit={handleSearch} loading={loading} />
+                  </>
+                )}
               </div>
 
               {/* Response Viewer */}

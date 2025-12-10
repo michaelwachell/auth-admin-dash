@@ -16,6 +16,24 @@ export interface UnlockRequest {
   targetEnv?: 'mobile' | 'browser' | 'both'
 }
 
+export interface LogoutRequest {
+  UID: string
+  format?: 'json' | 'jsonp' | 'xml'
+  callback?: string
+  httpStatusCodes?: boolean
+}
+
+export interface SearchRequest {
+  query: string
+  querySorts?: string
+  start?: number
+  limit?: number
+  fields?: string
+  format?: 'json' | 'jsonp' | 'xml'
+  callback?: string
+  httpStatusCodes?: boolean
+}
+
 export interface GigyaResponse {
   statusCode: number
   errorCode?: number

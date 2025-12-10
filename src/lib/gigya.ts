@@ -53,4 +53,10 @@ export class GigyaClient {
 
   unlockAccount = async (params: Record<string, any>): Promise<GigyaResponse> => 
     this.callApi('accounts.rba.unlock', params)
+
+  logout = async (params: Record<string, any>): Promise<GigyaResponse> => 
+    this.callApi('accounts.logout', params)
+
+  search = async (params: Record<string, any>): Promise<GigyaResponse> => 
+    this.callApi('accounts.search', params)
 }
