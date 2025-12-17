@@ -47,7 +47,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSubmit, loading }) => {
           disabled={loading}
         />
         <p className="mt-2 text-xs text-gray-400">
-          Use Gigya query syntax (field operator value). Examples: email="user@example.com", lastLogin>"2024-01-01"
+          Use Gigya query syntax (field operator value). Examples: email="user@example.com", lastLogin&gt;"2024-01-01"
         </p>
       </div>
 
@@ -143,7 +143,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSubmit, loading }) => {
               <li>Find by email: <code className="bg-gray-800 px-1 rounded">email="user@example.com"</code></li>
               <li>Find by UID: <code className="bg-gray-800 px-1 rounded">UID="123456"</code></li>
               <li>Find by first name: <code className="bg-gray-800 px-1 rounded">profile.firstName="John"</code></li>
-              <li>Recent logins: <code className="bg-gray-800 px-1 rounded">lastLogin>"2024-01-01"</code></li>
+              <li>Recent logins: <code className="bg-gray-800 px-1 rounded">lastLogin&gt;"2024-01-01"</code></li>
               <li>Locked accounts: <code className="bg-gray-800 px-1 rounded">isLockedOut=true</code></li>
               <li>Contains search: <code className="bg-gray-800 px-1 rounded">email contains "gmail"</code></li>
             </ul>

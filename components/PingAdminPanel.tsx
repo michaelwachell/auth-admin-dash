@@ -101,7 +101,7 @@ export default function PingAdminPanel() {
     const hours = String(date.getHours()).padStart(2, '0')
     const minutes = String(date.getMinutes()).padStart(2, '0')
     return `${year}-${month}-${day}T${hours}:${minutes}`
-  }
+  };
 
   // Load from storage on mount
   useEffect(() => {
@@ -243,13 +243,13 @@ export default function PingAdminPanel() {
     } finally {
       setLoading(false)
     }
-  }
+  };
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text)
     setCopied(field)
     setTimeout(() => setCopied(null), 2000)
-  }
+  };
 
   const clearToken = () => {
     setAccessToken('')
@@ -257,7 +257,7 @@ export default function PingAdminPanel() {
     sessionStorage.removeItem('ping_admin_access_token')
     sessionStorage.removeItem('ping_admin_token_expiry')
     setSuccess('Token cleared')
-  }
+  };
 
   const fetchMetadata = async () => {
     if (!metadataEndpoint) {
@@ -311,8 +311,8 @@ export default function PingAdminPanel() {
     } finally {
       setFetchingMetadata(false)
     }
-  }
-  
+  };
+
   const fetchLogs = async () => {
     if (!tenantUrl || !logApiKey || !logApiSecret || !logSource) {
       setError('Please provide tenant URL, API key, API secret, and select a source')
@@ -385,7 +385,7 @@ export default function PingAdminPanel() {
     } finally {
       setFetchingLogs(false)
     }
-  }
+  };
 
   const downloadLogs = () => {
     const dataStr = JSON.stringify(logs, null, 2)
@@ -397,7 +397,7 @@ export default function PingAdminPanel() {
     linkElement.setAttribute('href', dataUri)
     linkElement.setAttribute('download', exportFileDefaultName)
     linkElement.click()
-  }
+  };
 
   const isTokenValid = accessToken && tokenExpiry && new Date() < tokenExpiry
   
@@ -428,7 +428,7 @@ export default function PingAdminPanel() {
       newExpanded.add(index)
     }
     setExpandedLogs(newExpanded)
-  }
+  };
 
   const callNflUserEndpoint = async (method: 'GET' | 'PUT' | 'PATCH') => {
     if (!tenantUrl || !nflUserId || !accessToken) {
@@ -493,7 +493,7 @@ export default function PingAdminPanel() {
     } finally {
       setCustomEndpointLoading(false)
     }
-  }
+  };
 
   const callSchemaConfigEndpoint = async () => {
     if (!tenantUrl || !accessToken) {
@@ -504,16 +504,16 @@ export default function PingAdminPanel() {
     setCustomEndpointLoading(true)
     setError('')
     setCustomEndpointResult(null)
-    
-    const endpoint = schemaFieldName 
+
+    const endpoint = schemaFieldName
       ? `${tenantUrl}/openidm/endpoint/nflschemaconfig/${schemaFieldName}`
       : `${tenantUrl}/openidm/endpoint/nflschemaconfig`
-    
+
     // Build curl command
     const curl = `curl -X GET "${endpoint}" \\
   -H "Authorization: Bearer ${accessToken}" \\
   -H "Accept: application/json"`
-    
+
     setCustomEndpointCurl(curl)
 
     try {
@@ -542,7 +542,7 @@ export default function PingAdminPanel() {
     } finally {
       setCustomEndpointLoading(false)
     }
-  }
+  };
 
   return (
     <div className="w-full">

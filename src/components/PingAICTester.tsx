@@ -35,7 +35,7 @@ export default function PingAICTester() {
     metadataUrl: '',
     clientId: '',
     clientSecret: '',
-    redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/callback` : '',
+    redirectUri: '',
     scope: 'openid profile email',
     responseType: 'code',
     usePKCE: true,
@@ -54,12 +54,24 @@ export default function PingAICTester() {
   const [refreshing, setRefreshing] = useState(false);
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [storedRefreshToken, setStoredRefreshToken] = useState<string | null>(null);
 
   // Load config from localStorage on mount
   useEffect(() => {
+    // Set the default redirect URI based on window.location
+    setConfig(prev => ({
+      ...prev,
+      redirectUri: `${window.location.origin}/callback`
+    }));
+
     const savedConfig = localStorage.getItem('ping_oidc_config');
     const savedMetadata = localStorage.getItem('ping_oidc_metadata');
-    
+    const savedRefreshToken = localStorage.getItem('ping_refresh_token');
+
+    if (savedRefreshToken) {
+      setStoredRefreshToken(savedRefreshToken);
+    }
+
     if (savedConfig) {
       try {
         const parsed = JSON.parse(savedConfig);
@@ -179,6 +191,7 @@ export default function PingAICTester() {
         // Store refresh token if present
         if (data.refresh_token) {
           localStorage.setItem('ping_refresh_token', data.refresh_token);
+          setStoredRefreshToken(data.refresh_token);
         }
         // Set token expiry time
         if (data.expires_in) {
@@ -380,8 +393,8 @@ export default function PingAICTester() {
   };
 
   const refreshAccessToken = async () => {
-    const refreshToken = tokenResponse?.refresh_token || (typeof window !== 'undefined' ? localStorage.getItem('ping_refresh_token') : null);
-    
+    const refreshToken = tokenResponse?.refresh_token || storedRefreshToken;
+
     if (!refreshToken) {
       setError('No refresh token available');
       return;
@@ -428,6 +441,7 @@ export default function PingAICTester() {
         // Update stored refresh token if a new one was provided
         if (data.refresh_token) {
           localStorage.setItem('ping_refresh_token', data.refresh_token);
+          setStoredRefreshToken(data.refresh_token);
         }
         // Update token expiry time
         if (data.expires_in) {
@@ -711,12 +725,12 @@ export default function PingAICTester() {
           </div>
         )}
         
-        {(tokenResponse?.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
+        {(tokenResponse?.refresh_token || storedRefreshToken) && (
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium text-gray-300">Refresh Token</h3>
               <button
-                onClick={() => copyToClipboard(tokenResponse?.refresh_token || (typeof window !== 'undefined' ? localStorage.getItem('ping_refresh_token') : '') || '', 'refresh_token')}
+                onClick={() => copyToClipboard(tokenResponse?.refresh_token || storedRefreshToken || '', 'refresh_token')}
                 className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-sm"
               >
                 {copied === 'refresh_token' ? (
@@ -733,7 +747,7 @@ export default function PingAICTester() {
               </button>
             </div>
             <div className="bg-gray-900 p-3 rounded-md font-mono text-xs break-all text-gray-300">
-              {tokenResponse?.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))}
+              {tokenResponse?.refresh_token || storedRefreshToken}
             </div>
           </div>
         )}
@@ -754,13 +768,13 @@ export default function PingAICTester() {
                 )}
               </div>
               <div>Scope: {tokenResponse.scope}</div>
-              {(tokenResponse.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
+              {(tokenResponse.refresh_token || storedRefreshToken) && (
                 <div className="text-green-400">✓ Refresh token available</div>
               )}
             </div>
             
             <div className="flex gap-2 mt-4">
-              {(tokenResponse.refresh_token || (typeof window !== 'undefined' && localStorage.getItem('ping_refresh_token'))) && (
+              {(tokenResponse.refresh_token || storedRefreshToken) && (
                 <button
                   onClick={refreshAccessToken}
                   disabled={refreshing}
@@ -786,6 +800,7 @@ export default function PingAICTester() {
                   setTokenExpiry(null);
                   setTimeRemaining('');
                   localStorage.removeItem('ping_refresh_token');
+                  setStoredRefreshToken(null);
                 }}
                 className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
               >
