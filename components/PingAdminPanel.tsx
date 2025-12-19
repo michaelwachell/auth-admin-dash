@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { AlertCircle, Copy, Eye, EyeOff, RefreshCw, Send, Settings, CheckCircle, FileText, Download, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table, Code } from 'lucide-react'
+import { IdmQueryReference } from './IdmQueryReference'
+import { SimplePingSearch } from './ping-search/SimplePingSearch'
+import type { UserSearchParams, UserSearchResponse } from '../src/types/idm.types'
 
 interface TokenResponse {
   access_token: string
@@ -92,6 +95,14 @@ export default function PingAdminPanel() {
   const [customEndpointLoading, setCustomEndpointLoading] = useState(false)
   const [customEndpointResult, setCustomEndpointResult] = useState<any>(null)
   const [customEndpointCurl, setCustomEndpointCurl] = useState('')
+
+  // User search states
+  const [searchQueryFilter, setSearchQueryFilter] = useState('true')
+  const [searchFields, setSearchFields] = useState('userName,mail,givenName,sn,accountStatus')
+  const [searchPageSize, setSearchPageSize] = useState('20')
+  const [searchSortKeys, setSearchSortKeys] = useState('')
+  const [searchPagedResultsCookie, setSearchPagedResultsCookie] = useState('')
+  const [showMetadata, setShowMetadata] = useState(false)
   
   // Helper function to format date for datetime-local input
   const formatDateForInput = (date: Date) => {
@@ -539,6 +550,116 @@ export default function PingAdminPanel() {
       setSuccess('Schema configuration retrieved successfully!')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to call endpoint')
+    } finally {
+      setCustomEndpointLoading(false)
+    }
+  };
+
+  // Handler for the new PingSearchSection component
+  const handlePingSearch = async (params: UserSearchParams): Promise<UserSearchResponse> => {
+    if (!tenantUrl || !accessToken) {
+      throw new Error('Please provide tenant URL and ensure you have a valid token')
+    }
+
+    const response = await fetch('/api/ping-admin/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        accessToken,
+        baseUrl: tenantUrl,
+        queryFilter: params._queryFilter || params.queryFilter || 'true',
+        fields: params._fields || params.fields || undefined,
+        pageSize: params._pageSize || params.pageSize || 20,
+        sortKeys: params._sortKeys || params.sortKeys || undefined,
+        pagedResultsCookie: params._pagedResultsCookie || params.pagedResultsCookie || undefined
+      })
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to search users')
+    }
+
+    return result
+  }
+
+  const callUserSearchEndpoint = async () => {
+    if (!tenantUrl || !accessToken) {
+      setError('Please provide tenant URL and ensure you have a valid token')
+      return
+    }
+
+    setCustomEndpointLoading(true)
+    setError('')
+    setCustomEndpointResult(null)
+
+    // Build fields list with metadata if checkbox is checked
+    let fieldsToRequest = searchFields
+    if (showMetadata && searchFields) {
+      // Add metadata fields if not already present
+      const metadataFields = ['_id', '_rev', 'userId']
+      const currentFields = searchFields.split(',').map(f => f.trim())
+      const fieldsToAdd = metadataFields.filter(f => !currentFields.includes(f))
+      if (fieldsToAdd.length > 0) {
+        fieldsToRequest = `${fieldsToAdd.join(',')},${searchFields}`
+      }
+    } else if (showMetadata && !searchFields) {
+      // If no fields specified but metadata requested, include common fields plus metadata
+      fieldsToRequest = '_id,_rev,userId,userName,mail,givenName,sn,accountStatus'
+    }
+
+    try {
+      const response = await fetch('/api/ping-admin/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accessToken,
+          baseUrl: tenantUrl,
+          queryFilter: searchQueryFilter || 'true',
+          fields: fieldsToRequest || undefined,
+          pageSize: searchPageSize ? parseInt(searchPageSize) : 20,
+          sortKeys: searchSortKeys || undefined,
+          pagedResultsCookie: searchPagedResultsCookie || undefined
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to search users')
+      }
+
+      setCustomEndpointResult(result)
+
+      // Store the pagination cookie if available
+      if (result.pagedResultsCookie) {
+        setSearchPagedResultsCookie(result.pagedResultsCookie)
+      }
+
+      setSuccess(`User search completed! Found ${result.resultCount} results.`)
+
+      // Build curl command for reference
+      const endpoint = `${tenantUrl}/openidm/managed/alpha_user`
+      const params = new URLSearchParams()
+      params.append('_queryFilter', searchQueryFilter || 'true')
+      if (fieldsToRequest) params.append('_fields', fieldsToRequest)
+      if (searchPageSize) params.append('_pageSize', searchPageSize)
+      if (searchSortKeys) params.append('_sortKeys', searchSortKeys)
+      if (searchPagedResultsCookie) params.append('_pagedResultsCookie', searchPagedResultsCookie)
+
+      const curl = `curl -X GET "${endpoint}?${params.toString()}" \\
+  -H "Authorization: Bearer ${accessToken}" \\
+  -H "Accept: application/json" \\
+  -H "Accept-API-Version: resource=1.0"`
+
+      setCustomEndpointCurl(curl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to search users')
     } finally {
       setCustomEndpointLoading(false)
     }
@@ -1450,7 +1571,7 @@ export default function PingAdminPanel() {
                     <p className="text-xs text-gray-400 mb-3">
                       Read-only endpoint to retrieve NFL user schema mapping configuration
                     </p>
-                    
+
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-300 mb-1">Field Name (Optional)</label>
@@ -1462,25 +1583,34 @@ export default function PingAdminPanel() {
                           className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         />
                       </div>
-                      
-                      <button 
+
+                      <button
                         onClick={callSchemaConfigEndpoint}
                         disabled={!isTokenValid || customEndpointLoading}
                         className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {customEndpointLoading ? 'Loading...' : 'GET Schema Config'}
                       </button>
-                      
+
                       <div className="text-xs text-gray-500">
                         Endpoint: {tenantUrl}/openidm/endpoint/nflschemaconfig/{'{fieldName}'}
                       </div>
-                      
+
                       {customEndpointResult && (
                         <div className="text-xs text-center text-green-400 animate-pulse">
                           ✓ Response received - scroll down to view
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Simplified Ping Search API Section */}
+                  <div className="mt-4">
+                    <SimplePingSearch
+                      environment={tenantUrl ? new URL(tenantUrl).hostname.split('.')[0] : 'Not configured'}
+                      accessToken={accessToken}
+                      onSearch={handlePingSearch}
+                    />
                   </div>
                   
                   {/* Custom Endpoint Response Section */}

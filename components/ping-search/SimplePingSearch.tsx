@@ -1,0 +1,310 @@
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { Button, Input, Label, Checkbox, Card, CardContent, CardHeader, CardTitle, Alert, AlertDescription } from '../ui';
+import { Search, Copy, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { IdmQueryReference } from '../IdmQueryReference';
+import type { UserSearchParams, UserSearchResponse } from '../../src/types/idm.types';
+
+interface SimplePingSearchProps {
+  environment: string;
+  accessToken: string;
+  onSearch: (params: UserSearchParams) => Promise<UserSearchResponse>;
+}
+
+export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
+  environment,
+  accessToken,
+  onSearch
+}) => {
+  const [query, setQuery] = useState('true');
+  const [fields, setFields] = useState('_id,userName,givenName,sn,mail,accountStatus');
+  const [pageSize, setPageSize] = useState('20');
+  const [includeMetadata, setIncludeMetadata] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<UserSearchResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isQueryRefOpen, setIsQueryRefOpen] = useState(false);
+  const [curlCommand, setCurlCommand] = useState<string | null>(null);
+
+  const executeSearch = useCallback(async () => {
+    if (!accessToken) {
+      setError('Access token required');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const params: UserSearchParams = {
+        _queryFilter: query || 'true',
+        _fields: fields,
+        _pageSize: parseInt(pageSize),
+        ...(includeMetadata && { _queryId: 'query-all-ids' })
+      };
+
+      // Generate curl command for developers
+      const baseUrl = environment.includes('http') ? environment : `https://${environment}-id.nfl.com`;
+      const endpoint = `${baseUrl}/openidm/managed/alpha_user`;
+      const queryParams = new URLSearchParams();
+      queryParams.append('_queryFilter', query || 'true');
+      if (fields) queryParams.append('_fields', fields);
+      queryParams.append('_pageSize', pageSize);
+      if (includeMetadata) queryParams.append('_queryId', 'query-all-ids');
+
+      const curl = `curl -X GET "${endpoint}?${queryParams.toString()}" \\
+  -H "Authorization: Bearer ${accessToken}" \\
+  -H "Accept: application/json" \\
+  -H "Accept-API-Version: resource=1.0"`;
+
+      setCurlCommand(curl);
+
+      const response = await onSearch(params);
+      setSearchResults(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken, query, fields, pageSize, includeMetadata, onSearch, environment]);
+
+  const copyResults = useCallback(() => {
+    if (searchResults) {
+      navigator.clipboard.writeText(JSON.stringify(searchResults, null, 2));
+    }
+  }, [searchResults]);
+
+  const copyCurl = useCallback(() => {
+    if (curlCommand) {
+      navigator.clipboard.writeText(curlCommand);
+    }
+  }, [curlCommand]);
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Search className="h-5 w-5" />
+          Ping Search API
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Query Input */}
+        <div className="space-y-2">
+          <Label htmlFor="query">Query Filter</Label>
+          <Input
+            id="query"
+            placeholder="true (all users) or mail co '@nfl.com'"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && executeSearch()}
+            className="font-mono"
+          />
+        </div>
+
+        {/* Fields Input */}
+        <div className="space-y-2">
+          <Label htmlFor="fields">Fields to Return</Label>
+          <Input
+            id="fields"
+            placeholder="Comma-separated field names"
+            value={fields}
+            onChange={(e) => setFields(e.target.value)}
+          />
+        </div>
+
+        {/* Page Size */}
+        <div className="space-y-2">
+          <Label htmlFor="pageSize">Page Size</Label>
+          <Input
+            id="pageSize"
+            type="number"
+            min="1"
+            max="1000"
+            value={pageSize}
+            onChange={(e) => setPageSize(e.target.value)}
+          />
+        </div>
+
+        {/* Metadata Checkbox */}
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="includeMetadata"
+            checked={includeMetadata}
+            onCheckedChange={(checked) => setIncludeMetadata(checked as boolean)}
+          />
+          <Label htmlFor="includeMetadata" className="text-sm">
+            Include metadata in response
+          </Label>
+        </div>
+
+        {/* Execute Button */}
+        <Button
+          onClick={executeSearch}
+          disabled={isLoading || !accessToken}
+          className="w-full"
+        >
+          {isLoading ? 'Searching...' : 'Execute Search'}
+        </Button>
+
+        {/* Curl Command Display */}
+        {curlCommand && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <Label className="text-sm">cURL Command</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyCurl}
+              >
+                <Copy className="h-4 w-4 mr-1" />
+                Copy
+              </Button>
+            </div>
+            <pre className="text-xs bg-gray-900 p-3 rounded border border-gray-700 overflow-x-auto">
+              {curlCommand}
+            </pre>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Query Reference & Examples (Collapsible) */}
+        <div className="border rounded-lg">
+          <Button
+            variant="ghost"
+            className="w-full p-3 flex justify-between items-center"
+            onClick={() => setIsQueryRefOpen(!isQueryRefOpen)}
+          >
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4" />
+              <span>Query Language Reference</span>
+            </div>
+            {isQueryRefOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+
+          {isQueryRefOpen && (
+            <div className="p-3 border-t space-y-3">
+              {/* Basic Examples */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Common Queries</p>
+                <div className="text-xs space-y-1">
+                  <code className="block p-2 bg-muted rounded">
+                    true - All users
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    mail eq "user@example.com" - Exact email
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    mail co "@nfl.com" - Contains @nfl.com
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    userName sw "john" - Starts with john
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    accountStatus eq "active" - Active users
+                  </code>
+                </div>
+              </div>
+
+              {/* Operators */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Operators</p>
+                <div className="text-xs space-y-1">
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">eq</span>
+                    <span className="text-gray-500">equals</span>
+                  </div>
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">co</span>
+                    <span className="text-gray-500">contains</span>
+                  </div>
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">sw</span>
+                    <span className="text-gray-500">starts with</span>
+                  </div>
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">pr</span>
+                    <span className="text-gray-500">present (exists)</span>
+                  </div>
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">gt/ge</span>
+                    <span className="text-gray-500">greater than/equal</span>
+                  </div>
+                  <div className="flex justify-between p-1">
+                    <span className="font-mono">lt/le</span>
+                    <span className="text-gray-500">less than/equal</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Field Presence Queries */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Field Presence Checks</p>
+                <div className="text-xs space-y-1">
+                  <code className="block p-2 bg-muted rounded">
+                    telephoneNumber pr - Has phone number
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    mail pr - Has email address
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    !(givenName pr) - Missing first name
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    _id eq "12345" - Find by unique ID
+                  </code>
+                </div>
+              </div>
+
+              {/* Complex Examples */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Complex Queries</p>
+                <div className="text-xs space-y-1">
+                  <code className="block p-2 bg-muted rounded">
+                    (mail co "@nfl.com") and (accountStatus eq "active")
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    (givenName eq "John") or (givenName eq "Jane")
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    !(emailVerified eq "true") - Not verified
+                  </code>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* JSON Results */}
+        {searchResults && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <Label>Results ({searchResults.resultCount} items)</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyResults}
+              >
+                <Copy className="h-4 w-4 mr-1" />
+                Copy
+              </Button>
+            </div>
+            <div className="max-h-96 overflow-auto">
+              <pre className="text-xs bg-gray-900 p-3 rounded border border-gray-700">
+                {JSON.stringify(searchResults, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
