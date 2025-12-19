@@ -37,9 +37,22 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
     setError(null);
 
     try {
+      // Add metadata fields if checkbox is enabled and they're not already in the fields list
+      let finalFields = fields;
+      if (includeMetadata && fields && !fields.includes('_id')) {
+        const metadataFields = ['_id', '_rev', 'userId'];
+        const currentFields = fields.split(',').map(f => f.trim());
+        const fieldsToAdd = metadataFields.filter(f => !currentFields.includes(f));
+        if (fieldsToAdd.length > 0) {
+          finalFields = `${fieldsToAdd.join(',')},${fields}`;
+        }
+      } else if (includeMetadata && !fields) {
+        finalFields = '_id,_rev,userId,userName,mail,givenName,sn,accountStatus';
+      }
+
       const params: UserSearchParams = {
         _queryFilter: query || 'true',
-        _fields: fields,
+        _fields: finalFields,
         _pageSize: parseInt(pageSize),
         ...(includeMetadata && { _queryId: 'query-all-ids' })
       };
@@ -49,7 +62,7 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
       const endpoint = `${baseUrl}/openidm/managed/alpha_user`;
       const queryParams = new URLSearchParams();
       queryParams.append('_queryFilter', query || 'true');
-      if (fields) queryParams.append('_fields', fields);
+      if (finalFields) queryParams.append('_fields', finalFields);
       queryParams.append('_pageSize', pageSize);
       if (includeMetadata) queryParams.append('_queryId', 'query-all-ids');
 
@@ -245,6 +258,22 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
                 </div>
               </div>
 
+              {/* Metadata Queries */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Metadata Fields</p>
+                <div className="text-xs space-y-1">
+                  <code className="block p-2 bg-muted rounded">
+                    _id eq "abc123" - Find by unique ID
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    _rev eq "1" - Find by revision number
+                  </code>
+                  <div className="p-2 bg-yellow-900/20 border border-yellow-800/50 rounded text-yellow-200">
+                    <strong>Note:</strong> Enable "Include metadata" checkbox to get _id, _rev in results
+                  </div>
+                </div>
+              </div>
+
               {/* Field Presence Queries */}
               <div>
                 <p className="text-xs font-semibold mb-2 text-gray-400">Field Presence Checks</p>
@@ -257,9 +286,6 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
                   </code>
                   <code className="block p-2 bg-muted rounded">
                     !(givenName pr) - Missing first name
-                  </code>
-                  <code className="block p-2 bg-muted rounded">
-                    _id eq "12345" - Find by unique ID
                   </code>
                 </div>
               </div>

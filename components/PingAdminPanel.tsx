@@ -573,7 +573,8 @@ export default function PingAdminPanel() {
         fields: params._fields || params.fields || undefined,
         pageSize: params._pageSize || params.pageSize || 20,
         sortKeys: params._sortKeys || params.sortKeys || undefined,
-        pagedResultsCookie: params._pagedResultsCookie || params.pagedResultsCookie || undefined
+        pagedResultsCookie: params._pagedResultsCookie || params.pagedResultsCookie || undefined,
+        queryId: params._queryId || undefined
       })
     })
 
