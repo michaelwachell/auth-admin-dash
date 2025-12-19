@@ -41,7 +41,7 @@ export default function PingAdminPanel() {
   const [clientSecret, setClientSecret] = useState('')
   const [tenantUrl, setTenantUrl] = useState('')
   const [tokenEndpoint, setTokenEndpoint] = useState('')
-  const [metadataEndpoint, setMetadataEndpoint] = useState('')
+  const [metadataEndpoint, setMetadataEndpoint] = useState('https://auth-alpha-dev-id.nfl.com/am/oauth2/alpha/.well-known/openid-configuration')
   const [scopes, setScopes] = useState('fr:idm:* fr:am:*')
   const [accessToken, setAccessToken] = useState('')
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null)
@@ -717,7 +717,7 @@ export default function PingAdminPanel() {
                   <input
                     id="metadata-endpoint"
                     type="url"
-                    placeholder="https://auth.pingone.com/.../as/.well-known/openid-configuration"
+                    placeholder="https://auth-alpha-dev-id.nfl.com/am/oauth2/alpha/.well-known/openid-configuration"
                     value={metadataEndpoint}
                     onChange={(e) => setMetadataEndpoint(e.target.value)}
                     className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
