@@ -8,7 +8,6 @@ interface SearchRequestBody {
   pageSize?: number
   sortKeys?: string
   pagedResultsCookie?: string
-  queryId?: string
 }
 
 interface UserSearchResult {
@@ -36,8 +35,7 @@ export async function POST(request: NextRequest) {
       fields,
       pageSize = 10,
       sortKeys,
-      pagedResultsCookie,
-      queryId
+      pagedResultsCookie
     } = body
 
     if (!accessToken || !baseUrl) {
@@ -67,10 +65,6 @@ export async function POST(request: NextRequest) {
 
     if (pagedResultsCookie) {
       searchUrl.searchParams.append('_pagedResultsCookie', pagedResultsCookie)
-    }
-
-    if (queryId) {
-      searchUrl.searchParams.append('_queryId', queryId)
     }
 
     // Make the search request

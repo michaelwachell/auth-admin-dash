@@ -573,8 +573,7 @@ export default function PingAdminPanel() {
         fields: params._fields || params.fields || undefined,
         pageSize: params._pageSize || params.pageSize || 20,
         sortKeys: params._sortKeys || params.sortKeys || undefined,
-        pagedResultsCookie: params._pagedResultsCookie || params.pagedResultsCookie || undefined,
-        queryId: params._queryId || undefined
+        pagedResultsCookie: params._pagedResultsCookie || params.pagedResultsCookie || undefined
       })
     })
 
@@ -1608,7 +1607,7 @@ export default function PingAdminPanel() {
                   {/* Simplified Ping Search API Section */}
                   <div className="mt-4">
                     <SimplePingSearch
-                      environment={tenantUrl ? new URL(tenantUrl).hostname.split('.')[0] : 'Not configured'}
+                      environment={tenantUrl || 'Not configured'}
                       accessToken={accessToken}
                       onSearch={handlePingSearch}
                     />

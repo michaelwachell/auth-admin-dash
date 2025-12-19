@@ -18,7 +18,7 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
   onSearch
 }) => {
   const [query, setQuery] = useState('true');
-  const [fields, setFields] = useState('_id,userName,givenName,sn,mail,accountStatus');
+  const [fields, setFields] = useState('userName,givenName,sn,mail,accountStatus');
   const [pageSize, setPageSize] = useState('20');
   const [includeMetadata, setIncludeMetadata] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,32 +39,30 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
     try {
       // Add metadata fields if checkbox is enabled and they're not already in the fields list
       let finalFields = fields;
-      if (includeMetadata && fields && !fields.includes('_id')) {
-        const metadataFields = ['_id', '_rev', 'userId'];
+      if (includeMetadata && fields) {
+        const metadataFields = ['_meta/lastChanged', '_meta/created', '_meta/createDate', '_meta/lastModified', '_meta/modifyDate'];
         const currentFields = fields.split(',').map(f => f.trim());
         const fieldsToAdd = metadataFields.filter(f => !currentFields.includes(f));
         if (fieldsToAdd.length > 0) {
           finalFields = `${fieldsToAdd.join(',')},${fields}`;
         }
       } else if (includeMetadata && !fields) {
-        finalFields = '_id,_rev,userId,userName,mail,givenName,sn,accountStatus';
+        finalFields = '_meta/lastChanged,_meta/created,_meta/createDate,_meta/lastModified,_meta/modifyDate,userName,mail,givenName,sn,accountStatus';
       }
 
       const params: UserSearchParams = {
         _queryFilter: query || 'true',
         _fields: finalFields,
-        _pageSize: parseInt(pageSize),
-        ...(includeMetadata && { _queryId: 'query-all-ids' })
+        _pageSize: parseInt(pageSize)
       };
 
       // Generate curl command for developers
-      const baseUrl = environment.includes('http') ? environment : `https://${environment}-id.nfl.com`;
+      const baseUrl = environment.includes('http') ? environment : `https://${environment}`;
       const endpoint = `${baseUrl}/openidm/managed/alpha_user`;
       const queryParams = new URLSearchParams();
       queryParams.append('_queryFilter', query || 'true');
       if (finalFields) queryParams.append('_fields', finalFields);
       queryParams.append('_pageSize', pageSize);
-      if (includeMetadata) queryParams.append('_queryId', 'query-all-ids');
 
       const curl = `curl -X GET "${endpoint}?${queryParams.toString()}" \\
   -H "Authorization: Bearer ${accessToken}" \\
@@ -149,7 +147,7 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
             onCheckedChange={(checked) => setIncludeMetadata(checked as boolean)}
           />
           <Label htmlFor="includeMetadata" className="text-sm">
-            Include metadata in response
+            Include timestamp metadata (lastChanged, created, etc.) in response
           </Label>
         </div>
 
@@ -260,16 +258,22 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
 
               {/* Metadata Queries */}
               <div>
-                <p className="text-xs font-semibold mb-2 text-gray-400">Metadata Fields</p>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Timestamp Metadata Queries</p>
                 <div className="text-xs space-y-1">
                   <code className="block p-2 bg-muted rounded">
-                    _id eq "abc123" - Find by unique ID
+                    _meta/lastChanged ge "2024-01-01T00:00:00Z" - Modified after date
                   </code>
                   <code className="block p-2 bg-muted rounded">
-                    _rev eq "1" - Find by revision number
+                    _meta/created le "2024-12-31T23:59:59Z" - Created before date
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    _meta/lastModified ge "2024-12-01T00:00:00Z" - Recent changes
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    (_meta/lastChanged ge "2024-12-01") and (accountStatus eq "active")
                   </code>
                   <div className="p-2 bg-yellow-900/20 border border-yellow-800/50 rounded text-yellow-200">
-                    <strong>Note:</strong> Enable "Include metadata" checkbox to get _id, _rev in results
+                    <strong>Note:</strong> Enable "Include timestamp metadata" checkbox to add _meta/lastChanged, _meta/created, and other timestamp fields to results. Use ISO 8601 date format for queries.
                   </div>
                 </div>
               </div>
@@ -303,6 +307,28 @@ export const SimplePingSearch: React.FC<SimplePingSearchProps> = ({
                   <code className="block p-2 bg-muted rounded">
                     !(emailVerified eq "true") - Not verified
                   </code>
+                </div>
+              </div>
+
+              {/* Time-based Query Examples */}
+              <div>
+                <p className="text-xs font-semibold mb-2 text-gray-400">Time-based Queries (with Metadata)</p>
+                <div className="text-xs space-y-1">
+                  <code className="block p-2 bg-muted rounded">
+                    _meta/lastChanged ge "2024-12-19T00:00:00Z" - Today's changes
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    _meta/created ge "2024-12-01" and _meta/created le "2024-12-31" - This month
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    _meta/lastModified ge "2024-12-18T00:00:00Z" - Last 24 hours
+                  </code>
+                  <code className="block p-2 bg-muted rounded">
+                    (accountStatus eq "inactive") and (_meta/lastChanged le "2024-01-01")
+                  </code>
+                  <div className="text-gray-500 text-[10px] mt-1">
+                    Tip: Dates can be ISO 8601 format with or without time. Use Z for UTC.
+                  </div>
                 </div>
               </div>
             </div>
