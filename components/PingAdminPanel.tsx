@@ -162,17 +162,28 @@ export default function PingAdminPanel() {
       localStorage.setItem('ping_admin_token_endpoint', tokenEndpoint)
       
       // Auto-construct tenant URL from token endpoint
-      // Handle both .forgeblocks.com and .id.forgerock.io domains
-      const forgeblocksMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
-      const forgerockMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
-      
-      if (forgeblocksMatch) {
-        const hostname = forgeblocksMatch[0]
-        setTenantUrl(hostname)
-      } else if (forgerockMatch) {
-        // For forgerock.io domains, use the full hostname
-        const hostname = forgerockMatch[0]
-        setTenantUrl(hostname)
+      // Extract the base URL (protocol + hostname) from the token endpoint
+      try {
+        const url = new URL(tokenEndpoint)
+        const baseUrl = `${url.protocol}//${url.hostname}`
+        
+        // Only auto-set if tenantUrl is empty or was previously auto-detected
+        // This prevents overwriting manual entries
+        if (!tenantUrl || tenantUrl === 'Not configured') {
+          setTenantUrl(baseUrl)
+        }
+      } catch (e) {
+        // If URL parsing fails, try the legacy pattern matching
+        const forgeblocksMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
+        const forgerockMatch = tokenEndpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
+        
+        if (forgeblocksMatch) {
+          const hostname = forgeblocksMatch[0]
+          setTenantUrl(hostname)
+        } else if (forgerockMatch) {
+          const hostname = forgerockMatch[0]
+          setTenantUrl(hostname)
+        }
       }
     }
   }, [tokenEndpoint])
@@ -301,16 +312,26 @@ export default function PingAdminPanel() {
         setTokenEndpoint(data.token_endpoint)
         
         // Try to construct tenant URL from the token endpoint
-        const forgeblocksMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
-        const forgerockMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
-        
-        if (forgeblocksMatch) {
-          const hostname = forgeblocksMatch[0]
-          setTenantUrl(hostname)
-        } else if (forgerockMatch) {
-          // For forgerock.io domains, use the full hostname
-          const hostname = forgerockMatch[0]
-          setTenantUrl(hostname)
+        try {
+          const url = new URL(data.token_endpoint)
+          const baseUrl = `${url.protocol}//${url.hostname}`
+          
+          // Only auto-set if tenantUrl is empty or was previously auto-detected
+          if (!tenantUrl || tenantUrl === 'Not configured') {
+            setTenantUrl(baseUrl)
+          }
+        } catch (e) {
+          // Fallback to pattern matching if URL parsing fails
+          const forgeblocksMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.forgeblocks\.com/)
+          const forgerockMatch = data.token_endpoint.match(/https:\/\/([^\/]+)\.id\.forgerock\.io/)
+          
+          if (forgeblocksMatch) {
+            const hostname = forgeblocksMatch[0]
+            setTenantUrl(hostname)
+          } else if (forgerockMatch) {
+            const hostname = forgerockMatch[0]
+            setTenantUrl(hostname)
+          }
         }
         
         setSuccess('Endpoints discovered from metadata!')
@@ -754,6 +775,23 @@ export default function PingAdminPanel() {
                   onChange={(e) => setTokenEndpoint(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="tenant-url" className="block text-sm font-medium text-gray-200 mb-2">
+                  Tenant Base URL
+                </label>
+                <input
+                  id="tenant-url"
+                  type="url"
+                  placeholder="https://auth-alpha-dev-id.nfl.com"
+                  value={tenantUrl}
+                  onChange={(e) => setTenantUrl(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Base URL for IDM/OpenIDM endpoints (auto-detected from token endpoint or manually set)
+                </p>
               </div>
 
               <div>
