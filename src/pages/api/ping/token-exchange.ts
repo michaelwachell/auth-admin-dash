@@ -12,12 +12,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Token endpoint and parameters are required' });
   }
 
-  // Append ping flag to token endpoint URL when enabled
-  let url = tokenEndpoint;
-  if (includePing) {
-    const separator = url.includes('?') ? '&' : '?';
-    url += `${separator}ping=true`;
-  }
+  // Append ping flag to request body when enabled
+  const url = tokenEndpoint;
+  const body = includePing ? `${params}&ping=true` : params;
 
   // Use Basic Auth for client credentials when using Ping (matches be-accounts behavior)
   const headers: Record<string, string> = {
@@ -32,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Build debug info for troubleshooting
   const debugInfo = {
     url,
-    bodyParams: params,
+    bodyParams: body,
     hasBasicAuth: !!headers['Authorization'],
     includePing: !!includePing,
   };
@@ -40,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log('Token exchange request:', debugInfo);
 
   try {
-    const response = await axios.post(url, params, {
+    const response = await axios.post(url, body, {
       headers,
       timeout: 10000,
     });
