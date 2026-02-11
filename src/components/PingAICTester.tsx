@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, Copy, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { ChevronRight, Copy, CheckCircle, AlertCircle, RefreshCw, Terminal } from 'lucide-react';
 
 interface OIDCConfig {
   metadataUrl: string;
@@ -9,6 +9,7 @@ interface OIDCConfig {
   scope: string;
   responseType: 'token' | 'code';
   usePKCE: boolean;
+  includePing: boolean;
 }
 
 interface OIDCMetadata {
@@ -39,6 +40,7 @@ export default function PingAICTester() {
     scope: 'openid profile email',
     responseType: 'code',
     usePKCE: true,
+    includePing: false,
   });
 
   const [metadata, setMetadata] = useState<OIDCMetadata | null>(null);
@@ -55,6 +57,7 @@ export default function PingAICTester() {
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [storedRefreshToken, setStoredRefreshToken] = useState<string | null>(null);
+  const [authorizationUrl, setAuthorizationUrl] = useState<string>('');
 
   // Load config from localStorage on mount
   useEffect(() => {
@@ -149,8 +152,9 @@ export default function PingAICTester() {
         redirect_uri: conf.redirectUri,
         client_id: conf.clientId,
       });
-      
-      if (conf.clientSecret) {
+
+      // When using Ping, client_secret is sent via Basic Auth header instead of body
+      if (conf.clientSecret && !conf.includePing) {
         params.append('client_secret', conf.clientSecret);
       }
       
@@ -171,6 +175,8 @@ export default function PingAICTester() {
           tokenEndpoint: meta.token_endpoint,
           params: params.toString(),
           clientId: conf.clientId,
+          clientSecret: conf.clientSecret || undefined,
+          includePing: conf.includePing,
         }),
       });
       
@@ -178,12 +184,16 @@ export default function PingAICTester() {
       
       if (data.error) {
         console.error('Token exchange error:', data);
-        let errorMsg = `Token Exchange Error: ${data.error}`;
+        const errorValue = typeof data.error === 'object' ? JSON.stringify(data.error, null, 2) : data.error;
+        let errorMsg = `Token Exchange Error: ${errorValue}`;
         if (data.error_description) {
           errorMsg += ` - ${data.error_description}`;
         }
-        if (data.error === 'invalid_grant') {
+        if (errorValue === 'invalid_grant') {
           errorMsg += '\n\nNote: Authorization codes can only be used once. If you already tried this code, start a new auth flow.';
+        }
+        if (data._debug) {
+          errorMsg += `\n\n--- Debug Info ---\nURL: ${data._debug.url}\nBody: ${data._debug.bodyParams}\nBasic Auth: ${data._debug.hasBasicAuth}\nPing flag: ${data._debug.includePing}\nUpstream status: ${data._debug.upstreamStatus}`;
         }
         setError(errorMsg);
       } else {
@@ -269,6 +279,85 @@ export default function PingAICTester() {
       .replace(/=/g, '');
   };
 
+  const buildAuthorizationUrl = async (): Promise<{
+    url: string;
+    verifier?: string;
+    stateValue: string;
+  } | null> => {
+    if (!metadata?.authorization_endpoint || !config.clientId) return null;
+
+    const authUrl = new URL(metadata.authorization_endpoint);
+    const stateValue = generateState();
+
+    authUrl.searchParams.append('client_id', config.clientId);
+    authUrl.searchParams.append('redirect_uri', config.redirectUri);
+    authUrl.searchParams.append('scope', config.scope);
+    authUrl.searchParams.append('state', stateValue);
+
+    let verifier: string | undefined;
+
+    if (config.responseType === 'token') {
+      authUrl.searchParams.append('response_type', 'token id_token');
+      authUrl.searchParams.append('nonce', generateState());
+    } else {
+      authUrl.searchParams.append('response_type', 'code');
+
+      if (config.usePKCE) {
+        const pkce = await generatePKCE();
+        verifier = pkce.verifier;
+        authUrl.searchParams.append('code_challenge', pkce.challenge);
+        authUrl.searchParams.append('code_challenge_method', 'S256');
+      }
+    }
+
+    let urlString = authUrl.toString();
+
+    if (config.includePing) {
+      const separator = urlString.includes('?') ? '&' : '?';
+      urlString += `${separator}ping`;
+    }
+
+    return { url: urlString, verifier, stateValue };
+  };
+
+  // Eagerly generate authorization URL for curl preview
+  useEffect(() => {
+    if (!metadata?.authorization_endpoint || !config.clientId) {
+      setAuthorizationUrl('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const generate = async () => {
+      const result = await buildAuthorizationUrl();
+      if (cancelled || !result) return;
+
+      setAuthorizationUrl(result.url);
+      setState(result.stateValue);
+      localStorage.setItem('ping_oidc_state', result.stateValue);
+      if (result.verifier) {
+        setPkceVerifier(result.verifier);
+        localStorage.setItem('ping_pkce_verifier', result.verifier);
+      } else {
+        localStorage.removeItem('ping_pkce_verifier');
+      }
+    };
+
+    generate();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    metadata?.authorization_endpoint,
+    config.clientId,
+    config.redirectUri,
+    config.scope,
+    config.responseType,
+    config.usePKCE,
+    config.includePing,
+  ]);
+
   const startAuthFlow = async () => {
     if (!metadata?.authorization_endpoint) {
       setError('No authorization endpoint found. Please fetch metadata first.');
@@ -280,38 +369,23 @@ export default function PingAICTester() {
       return;
     }
 
-    const authUrl = new URL(metadata.authorization_endpoint);
-    const stateValue = generateState();
-    setState(stateValue);
-    
-    // Store state for validation
-    localStorage.setItem('ping_oidc_state', stateValue);
+    if (!authorizationUrl) {
+      setError('Authorization URL not ready. Please verify configuration.');
+      return;
+    }
+
+    // Store state and config for validation after redirect
+    localStorage.setItem('ping_oidc_state', state);
     localStorage.setItem('ping_oidc_metadata', JSON.stringify(metadata));
     localStorage.setItem('ping_oidc_config', JSON.stringify(config));
-    
-    authUrl.searchParams.append('client_id', config.clientId);
-    authUrl.searchParams.append('redirect_uri', config.redirectUri);
-    authUrl.searchParams.append('scope', config.scope);
-    authUrl.searchParams.append('state', stateValue);
-    
-    if (config.responseType === 'token') {
-      authUrl.searchParams.append('response_type', 'token id_token');
-      authUrl.searchParams.append('nonce', generateState());
-    } else {
-      authUrl.searchParams.append('response_type', 'code');
-      
-      if (config.usePKCE) {
-        const { verifier, challenge } = await generatePKCE();
-        localStorage.setItem('ping_pkce_verifier', verifier);
-        
-        authUrl.searchParams.append('code_challenge', challenge);
-        authUrl.searchParams.append('code_challenge_method', 'S256');
-      }
+
+    if (config.usePKCE && config.responseType === 'code' && pkceVerifier) {
+      localStorage.setItem('ping_pkce_verifier', pkceVerifier);
     }
-    
-    // Open in new window instead of redirect
-    window.open(authUrl.toString(), 'ping_auth', 'width=600,height=700');
-    
+
+    // Open the pre-built authorization URL
+    window.open(authorizationUrl, 'ping_auth', 'width=600,height=700');
+
     // Show the token exchange panel
     setShowTokenExchange(true);
     setError(null);
@@ -353,7 +427,7 @@ export default function PingAICTester() {
         console.log('State check:', { returned: returnedState, stored: storedState });
         console.log('PKCE verifier present:', !!storedVerifier);
         
-        if (storedState && returnedState !== storedState) {
+        if (returnedState && storedState && returnedState !== storedState) {
           setError('State mismatch - possible CSRF attack');
           return;
         }
@@ -415,7 +489,8 @@ export default function PingAICTester() {
         client_id: config.clientId,
       });
 
-      if (config.clientSecret) {
+      // When using Ping, client_secret is sent via Basic Auth header instead of body
+      if (config.clientSecret && !config.includePing) {
         params.append('client_secret', config.clientSecret);
       }
 
@@ -428,6 +503,8 @@ export default function PingAICTester() {
           tokenEndpoint: metadata.token_endpoint,
           params: params.toString(),
           clientId: config.clientId,
+          clientSecret: config.clientSecret || undefined,
+          includePing: config.includePing,
         }),
       });
 
@@ -458,18 +535,18 @@ export default function PingAICTester() {
 
   return (
     <div className="space-y-6">
-      {/* Token Exchange Panel */}
-      {showTokenExchange && (
+      {/* Token Exchange Panel - always visible when metadata is loaded */}
+      {metadata?.token_endpoint && (
         <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 text-blue-400">Token Exchange</h2>
           <p className="text-sm text-gray-300 mb-4">
-            After authorizing in the new window, copy the entire redirect URL from the browser's address bar and paste it here:
+            Paste the full redirect URL containing the authorization code to exchange it for an access token:
           </p>
           <div className="space-y-3">
             <textarea
               value={pastedUrl}
               onChange={(e) => setPastedUrl(e.target.value)}
-              placeholder="Paste the full redirect URL here (e.g., http://localhost:3000/callback?code=...)"
+              placeholder="Paste the full redirect URL here (e.g., https://staging-id.nfl.com/account?code=w1zcbSifN...&client_id=5gUWX8z2...)"
               className="w-full h-24 px-3 py-2 bg-gray-900 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs"
             />
             <div className="flex gap-2">
@@ -481,13 +558,11 @@ export default function PingAICTester() {
                 Exchange for Token
               </button>
               <button
-                onClick={() => {
-                  setShowTokenExchange(false);
-                  setPastedUrl('');
-                }}
-                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                onClick={() => setPastedUrl('')}
+                disabled={!pastedUrl}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Cancel
+                Clear
               </button>
             </div>
           </div>
@@ -619,9 +694,55 @@ export default function PingAICTester() {
                 </label>
               </div>
             )}
+
+            <div className="flex items-center gap-2 mt-6">
+              <input
+                type="checkbox"
+                id="includePing"
+                checked={config.includePing}
+                onChange={(e) => setConfig({ ...config, includePing: e.target.checked })}
+                className="w-4 h-4 text-blue-600 bg-gray-900 border-gray-600 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="includePing" className="text-sm font-medium text-gray-300">
+                Include ping parameter
+              </label>
+            </div>
           </div>
         </div>
-        
+
+        {/* Authorization Request Curl Preview */}
+        {authorizationUrl && (
+          <div className="mt-6 rounded-lg border border-blue-700 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 bg-blue-900/30 border-b border-blue-700">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-blue-400" />
+                <span className="text-sm font-medium text-blue-300">Authorization Request Preview</span>
+              </div>
+              <button
+                onClick={() => copyToClipboard(`curl "${authorizationUrl}"`, 'curl_preview')}
+                className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-sm"
+              >
+                {copied === 'curl_preview' ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copy curl
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="p-4 bg-gray-900">
+              <pre className="text-xs text-blue-200 font-mono whitespace-pre-wrap break-all">
+                <code>curl &quot;{authorizationUrl}&quot;</code>
+              </pre>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={startAuthFlow}
           disabled={!metadata || !config.clientId}
@@ -809,6 +930,43 @@ export default function PingAICTester() {
             </div>
           </>
         )}
+      </div>
+
+      {/* Clear All Session Data */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => {
+            localStorage.removeItem('ping_oidc_config');
+            localStorage.removeItem('ping_oidc_metadata');
+            localStorage.removeItem('ping_oidc_state');
+            localStorage.removeItem('ping_pkce_verifier');
+            localStorage.removeItem('ping_refresh_token');
+            setTokenResponse(null);
+            setStoredRefreshToken(null);
+            setMetadata(null);
+            setError(null);
+            setTokenExpiry(null);
+            setTimeRemaining('');
+            setPastedUrl('');
+            setAuthorizationUrl('');
+            setPkceVerifier('');
+            setPkceChallenge('');
+            setState('');
+            setConfig({
+              metadataUrl: '',
+              clientId: '',
+              clientSecret: '',
+              redirectUri: `${window.location.origin}/callback`,
+              scope: 'openid profile email',
+              responseType: 'code',
+              usePKCE: true,
+              includePing: false,
+            });
+          }}
+          className="px-3 py-1.5 text-xs text-red-400 border border-red-800 rounded-md hover:bg-red-900/30"
+        >
+          Clear All Session Data
+        </button>
       </div>
     </div>
   );

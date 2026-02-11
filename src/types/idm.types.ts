@@ -321,3 +321,49 @@ export interface ExportConfig {
   includeHeaders?: boolean
   dateFormat?: string
 }
+
+// ============== Reconciliation Types ==============
+
+/**
+ * Reconciliation job status
+ */
+export interface ReconciliationJob {
+  _id: string
+  mapping: string
+  state: 'ACTIVE' | 'CANCELED' | 'SUCCESS' | 'FAILED'
+  stage?: string
+  stageDescription?: string
+  progress?: {
+    source?: {
+      existing?: {
+        processed: number
+        total: number
+      }
+    }
+    target?: {
+      created?: number
+      updated?: number
+      deleted?: number
+    }
+  }
+  started?: string
+  ended?: string
+  duration?: string
+}
+
+/**
+ * Response from reconciliation list endpoint
+ */
+export interface ReconciliationListResponse {
+  reconciliations: ReconciliationJob[]
+}
+
+/**
+ * Response from reconciliation cancel operation
+ */
+export interface ReconciliationCancelResponse {
+  _id: string
+  state: string
+  ended: string
+  duration: string
+}

@@ -28,6 +28,7 @@ export interface SearchRequest {
   querySorts?: string
   start?: number
   limit?: number
+  cursorId?: string
   fields?: string
   format?: 'json' | 'jsonp' | 'xml'
   callback?: string

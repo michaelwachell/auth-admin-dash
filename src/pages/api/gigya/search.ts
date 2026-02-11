@@ -13,7 +13,7 @@ export default async function handler(
     })
   }
 
-  const { query, querySorts, start, limit, fields, ...additionalParams } = req.body
+  const { query, querySorts, start, limit, cursorId, fields, ...additionalParams } = req.body
 
   if (!query) {
     return res.status(400).json({
@@ -35,6 +35,7 @@ export default async function handler(
       ...(querySorts && { querySorts }),
       ...(start !== undefined && { start }),
       ...(limit !== undefined && { limit }),
+      ...(cursorId && { cursorId }),
       ...(fields && { fields }),
       ...additionalParams
     }

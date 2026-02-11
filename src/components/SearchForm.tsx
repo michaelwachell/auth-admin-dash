@@ -11,21 +11,23 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSubmit, loading }) => {
   const [querySorts, setQuerySorts] = useState('')
   const [start, setStart] = useState('0')
   const [limit, setLimit] = useState('100')
+  const [cursorId, setCursorId] = useState('')
   const [fields, setFields] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const data: any = {
       query: query.trim()
     }
-    
+
     if (querySorts.trim()) data.querySorts = querySorts.trim()
     if (start && start !== '0') data.start = parseInt(start)
     if (limit && limit !== '100') data.limit = parseInt(limit)
+    if (cursorId.trim()) data.cursorId = cursorId.trim()
     if (fields.trim()) data.fields = fields.trim()
-    
+
     onSubmit(data)
   }
 
@@ -110,6 +112,25 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSubmit, loading }) => {
                 disabled={loading}
               />
             </div>
+          </div>
+
+          {/* Cursor ID */}
+          <div>
+            <label htmlFor="cursorId" className="block text-sm font-medium text-gray-300 mb-2">
+              Cursor ID (for pagination)
+            </label>
+            <input
+              type="text"
+              id="cursorId"
+              value={cursorId}
+              onChange={(e) => setCursorId(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Paste nextCursorId from previous response"
+              disabled={loading}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Use the cursor ID from a previous search to fetch the next page of results.
+            </p>
           </div>
 
           {/* Fields */}

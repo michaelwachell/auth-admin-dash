@@ -14,7 +14,9 @@ import type {
   PatchOperation,
   ProfileUpdateResponse,
   IdmUser,
-  IdmError
+  IdmError,
+  ReconciliationListResponse,
+  ReconciliationCancelResponse
 } from '../types/idm.types'
 
 /**
@@ -199,6 +201,59 @@ export class IdmApiService {
     if (!response.ok) {
       const error: IdmError = await response.json()
       throw new Error(error.error || error.message || 'Failed to get field config')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Get list of reconciliation jobs
+   */
+  static async getReconciliations(
+    config: IdmApiConfig
+  ): Promise<ReconciliationListResponse> {
+    const response = await fetch('/api/ping-admin/reconciliation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        accessToken: config.accessToken,
+        endpoint: `${config.baseUrl}/openidm/recon`,
+        method: 'GET'
+      })
+    })
+
+    if (!response.ok) {
+      const error: IdmError = await response.json()
+      throw new Error(error.error || error.message || 'Failed to get reconciliations')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Cancel a reconciliation job
+   */
+  static async cancelReconciliation(
+    config: IdmApiConfig,
+    reconId: string
+  ): Promise<ReconciliationCancelResponse> {
+    const response = await fetch('/api/ping-admin/reconciliation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        accessToken: config.accessToken,
+        endpoint: `${config.baseUrl}/openidm/recon/${reconId}?_action=cancel`,
+        method: 'POST'
+      })
+    })
+
+    if (!response.ok) {
+      const error: IdmError = await response.json()
+      throw new Error(error.error || error.message || 'Failed to cancel reconciliation')
     }
 
     return response.json()

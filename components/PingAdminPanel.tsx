@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { AlertCircle, Copy, Eye, EyeOff, RefreshCw, Send, Settings, CheckCircle, FileText, Download, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table, Code } from 'lucide-react'
 import { IdmQueryReference } from './IdmQueryReference'
 import { SimplePingSearch } from './ping-search/SimplePingSearch'
-import type { UserSearchParams, UserSearchResponse } from '../src/types/idm.types'
+import { IdmApiService } from '../src/services/idm.service'
+import Toast from '../src/components/Toast'
+import type { UserSearchParams, UserSearchResponse, ReconciliationJob, ReconciliationListResponse } from '../src/types/idm.types'
 
 interface TokenResponse {
   access_token: string
@@ -103,7 +105,20 @@ export default function PingAdminPanel() {
   const [searchSortKeys, setSearchSortKeys] = useState('')
   const [searchPagedResultsCookie, setSearchPagedResultsCookie] = useState('')
   const [showMetadata, setShowMetadata] = useState(false)
-  
+
+  // Reconciliation endpoint states
+  const [reconAction, setReconAction] = useState('reconById')
+  const [reconMapping, setReconMapping] = useState('systemGigya__account___managedAlpha_user')
+  const [reconId, setReconId] = useState('')
+  const [reconRunTargetPhase, setReconRunTargetPhase] = useState(false)
+
+  // Reconciliation management states
+  const [reconciliations, setReconciliations] = useState<ReconciliationJob[]>([])
+  const [fetchingRecons, setFetchingRecons] = useState(false)
+  const [reconError, setReconError] = useState('')
+  const [cancellingRecon, setCancellingRecon] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+
   // Helper function to format date for datetime-local input
   const formatDateForInput = (date: Date) => {
     const year = date.getFullYear()
@@ -576,6 +591,67 @@ export default function PingAdminPanel() {
     }
   };
 
+  const fetchReconciliations = async () => {
+    if (!accessToken || !tenantUrl) {
+      setReconError('Access token and tenant URL required')
+      return
+    }
+
+    setFetchingRecons(true)
+    setReconError('')
+
+    try {
+      const config = {
+        baseUrl: tenantUrl,
+        accessToken
+      }
+      const result = await IdmApiService.getReconciliations(config)
+      setReconciliations(result.reconciliations || [])
+
+      if (result.reconciliations.length === 0) {
+        setReconError('No reconciliations found')
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to fetch reconciliations'
+      setReconError(errorMsg)
+      setReconciliations([])
+    } finally {
+      setFetchingRecons(false)
+    }
+  }
+
+  const handleCancelReconciliation = async (reconId: string) => {
+    if (!accessToken || !tenantUrl) {
+      setToast({ message: 'Access token required', type: 'error' })
+      return
+    }
+
+    setCancellingRecon(reconId)
+
+    try {
+      const config = {
+        baseUrl: tenantUrl,
+        accessToken
+      }
+      await IdmApiService.cancelReconciliation(config, reconId)
+
+      setToast({
+        message: `Reconciliation ${reconId} cancelled successfully`,
+        type: 'success'
+      })
+
+      // Refresh the list after a short delay
+      setTimeout(() => {
+        fetchReconciliations()
+      }, 1000)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to cancel reconciliation'
+      setToast({ message: errorMsg, type: 'error' })
+    } finally {
+      setCancellingRecon(null)
+    }
+  }
+
   // Handler for the new PingSearchSection component
   const handlePingSearch = async (params: UserSearchParams): Promise<UserSearchResponse> => {
     if (!tenantUrl || !accessToken) {
@@ -681,6 +757,69 @@ export default function PingAdminPanel() {
       setCustomEndpointCurl(curl)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to search users')
+    } finally {
+      setCustomEndpointLoading(false)
+    }
+  };
+
+  const callReconEndpoint = async () => {
+    if (!tenantUrl || !accessToken || !reconId) {
+      setError('Please provide tenant URL, user ID, and ensure you have a valid token')
+      return
+    }
+
+    setCustomEndpointLoading(true)
+    setError('')
+    setCustomEndpointResult(null)
+
+    // Build query parameters with defaults
+    const params = new URLSearchParams()
+    params.append('_action', reconAction)
+    params.append('mapping', reconMapping)
+    params.append('id', reconId)
+
+    const endpoint = `${tenantUrl}/openidm/recon?${params.toString()}`
+
+    // Build request body
+    const requestBody = {
+      runTargetPhase: reconRunTargetPhase
+    }
+
+    // Build curl command
+    const curl = `curl -X POST "${endpoint}" \\
+  -H "accept: */*" \\
+  -H "accept-language: en-US,en;q=0.9" \\
+  -H "authorization: Bearer ${accessToken}" \\
+  -H "cache-control: no-cache" \\
+  -H "content-type: application/json" \\
+  --data-raw '${JSON.stringify(requestBody)}'`
+
+    setCustomEndpointCurl(curl)
+
+    try {
+      const response = await fetch('/api/ping-admin/custom-endpoint', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint,
+          method: 'POST',
+          accessToken,
+          data: requestBody
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to call reconciliation endpoint')
+      }
+
+      setCustomEndpointResult(result)
+      setSuccess('Reconciliation request completed successfully!')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to call reconciliation endpoint')
     } finally {
       setCustomEndpointLoading(false)
     }
@@ -1642,6 +1781,85 @@ export default function PingAdminPanel() {
                     </div>
                   </div>
 
+                  {/* Reconciliation Endpoint */}
+                  <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                    <h4 className="text-sm font-medium text-gray-200 mb-3">Reconciliation Endpoint</h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                      Trigger reconciliation for a specific user by ID
+                    </p>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">User ID *</label>
+                        <input
+                          type="text"
+                          placeholder="Enter user ID (e.g., 08c2aa895da240aaa7a1a21ee59177de)"
+                          value={reconId}
+                          onChange={(e) => setReconId(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-300 mb-1">Action</label>
+                          <input
+                            type="text"
+                            value={reconAction}
+                            onChange={(e) => setReconAction(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          />
+                          <p className="text-[10px] text-gray-500 mt-1">Default: reconById</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-300 mb-1 flex items-center gap-2">
+                            <span>Run Target Phase</span>
+                            <input
+                              type="checkbox"
+                              checked={reconRunTargetPhase}
+                              onChange={(e) => setReconRunTargetPhase(e.target.checked)}
+                              className="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                            />
+                          </label>
+                          <div className="px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-400 text-sm">
+                            {reconRunTargetPhase ? 'true' : 'false'}
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-1">Default: false</p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">Mapping</label>
+                        <input
+                          type="text"
+                          value={reconMapping}
+                          onChange={(e) => setReconMapping(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+                        />
+                        <p className="text-[10px] text-gray-500 mt-1">Default: systemGigya__account___managedAlpha_user</p>
+                      </div>
+
+                      <button
+                        onClick={callReconEndpoint}
+                        disabled={!reconId || !isTokenValid || customEndpointLoading}
+                        className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {customEndpointLoading ? 'Loading...' : 'POST Reconciliation Request'}
+                      </button>
+
+                      <div className="text-xs text-gray-500 break-all">
+                        Endpoint: {tenantUrl}/openidm/recon?_action={reconAction}&mapping={reconMapping}&id={reconId || '{userId}'}
+                      </div>
+
+                      {customEndpointResult && (
+                        <div className="text-xs text-center text-green-400 animate-pulse">
+                          ✓ Response received - scroll down to view
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Simplified Ping Search API Section */}
                   <div className="mt-4">
                     <SimplePingSearch
@@ -1650,7 +1868,92 @@ export default function PingAdminPanel() {
                       onSearch={handlePingSearch}
                     />
                   </div>
-                  
+
+                  {/* Reconciliation Management */}
+                  <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 mt-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <RefreshCw className="w-5 h-5" />
+                        Reconciliation Management
+                      </h3>
+                      <button
+                        onClick={fetchReconciliations}
+                        disabled={!accessToken || !tenantUrl || fetchingRecons}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${fetchingRecons ? 'animate-spin' : ''}`} />
+                        {fetchingRecons ? 'Fetching...' : 'Fetch Reconciliations'}
+                      </button>
+                    </div>
+
+                    {reconError && (
+                      <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-red-200">{reconError}</span>
+                      </div>
+                    )}
+
+                    {reconciliations.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-700">
+                              <th className="text-left p-3 font-medium text-gray-400">Reconciliation ID</th>
+                              <th className="text-left p-3 font-medium text-gray-400">Mapping</th>
+                              <th className="text-left p-3 font-medium text-gray-400">State</th>
+                              <th className="text-left p-3 font-medium text-gray-400">Stage</th>
+                              <th className="text-left p-3 font-medium text-gray-400">Progress</th>
+                              <th className="text-left p-3 font-medium text-gray-400">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reconciliations.map((recon) => (
+                              <tr key={recon._id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                <td className="p-3 font-mono text-xs">{recon._id}</td>
+                                <td className="p-3">{recon.mapping || 'N/A'}</td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    recon.state === 'ACTIVE' ? 'bg-blue-900/50 text-blue-300' :
+                                    recon.state === 'SUCCESS' ? 'bg-green-900/50 text-green-300' :
+                                    recon.state === 'CANCELED' ? 'bg-yellow-900/50 text-yellow-300' :
+                                    'bg-red-900/50 text-red-300'
+                                  }`}>
+                                    {recon.state}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-xs">{recon.stageDescription || recon.stage || 'N/A'}</td>
+                                <td className="p-3 text-xs">
+                                  {recon.progress?.source?.existing ? (
+                                    <span>
+                                      {recon.progress.source.existing.processed} / {recon.progress.source.existing.total}
+                                    </span>
+                                  ) : 'N/A'}
+                                </td>
+                                <td className="p-3">
+                                  {recon.state === 'ACTIVE' && (
+                                    <button
+                                      onClick={() => handleCancelReconciliation(recon._id)}
+                                      disabled={cancellingRecon === recon._id}
+                                      className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs transition-colors"
+                                    >
+                                      {cancellingRecon === recon._id ? 'Cancelling...' : 'Cancel'}
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {!fetchingRecons && reconciliations.length === 0 && !reconError && (
+                      <div className="text-center py-8 text-gray-500">
+                        Click "Fetch Reconciliations" to load running jobs
+                      </div>
+                    )}
+                  </div>
+
                   {/* Custom Endpoint Response Section */}
                   {customEndpointCurl && (
                     <div className="space-y-2 mt-4">
@@ -1725,6 +2028,16 @@ export default function PingAdminPanel() {
           )}
         </div>
       </div>
+
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          duration={5000}
+        />
+      )}
     </div>
   )
 }
