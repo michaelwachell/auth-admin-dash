@@ -6,7 +6,7 @@
 
 1. **Install**: Double-click `Install.command` in Finder
    - A Terminal window opens and installs everything automatically
-   - If Node.js is missing, it opens the download page for you
+   - If Node.js is missing, it installs Homebrew + Node.js for you (you may be prompted for your Mac password)
    - Press any key to close when it says "Installation complete!"
 
 2. **Launch**: Double-click `Launch.command` in Finder
@@ -18,7 +18,7 @@
 
 1. **Install**: Double-click `Install.bat` in File Explorer
    - A Command Prompt window opens and installs everything automatically
-   - If Node.js is missing, it opens the download page for you
+   - If Node.js is missing, it installs it via `winget` or downloads the official installer
    - Press any key to close when it says "Installation complete!"
 
 2. **Launch**: Double-click `Launch.bat` in File Explorer
@@ -30,12 +30,15 @@
 
 ## Prerequisites
 
-The install script checks for these automatically, but if you need to install them manually:
+Everything is installed automatically by the install script. No manual setup needed.
+
+If auto-install fails, you can install manually:
 
 | Requirement | Version | Download |
 |-------------|---------|----------|
 | Node.js     | 18+     | [nodejs.org](https://nodejs.org) — use the LTS version |
-| Yarn        | 1.22+   | Installed automatically by the install script |
+| Yarn        | 1.22+   | Installed automatically via npm |
+| Homebrew (macOS only) | any | Installed automatically if needed |
 
 ---
 
@@ -77,8 +80,10 @@ Wait a few seconds — the server may still be compiling. Refresh the page.
 
 ### Install script (`Install.command` / `Install.bat`)
 
-1. Checks that Node.js is installed (opens download page if not)
-2. Checks that Yarn is installed (installs it via npm if not)
+1. Checks for Node.js — if missing, installs it automatically
+   - **macOS**: Installs Homebrew (if needed), then `brew install node`
+   - **Windows**: Uses `winget` or downloads the official Node.js MSI installer
+2. Checks for Yarn — if missing, installs it via `npm install -g yarn`
 3. Runs `yarn install` to download all project dependencies
 4. Copies `.env.example` to `.env` if no `.env` exists yet
 

@@ -14,25 +14,42 @@ echo ============================================
 echo.
 
 REM --------------------------------------------------
-REM 1. Check for Node.js
+REM 1. Check / install Node.js
 REM --------------------------------------------------
 echo [1/4] Checking for Node.js...
 where node >nul 2>nul
 if %ERRORLEVEL% neq 0 (
+    echo        Node.js not found — installing automatically...
     echo.
-    echo   ERROR: Node.js is not installed.
+
+    REM --- Strategy A: Use winget (built into Windows 10/11) ---
+    where winget >nul 2>nul
+    if %ERRORLEVEL% equ 0 (
+        echo        Installing Node.js via winget...
+        winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+        goto :refresh_path_after_node
+    )
+
+    REM --- Strategy B: Download and run the MSI installer ---
+    echo        winget not available — downloading Node.js installer...
+    echo        (This will download the official Node.js LTS installer^)
     echo.
-    echo   Please install Node.js first:
-    echo     1. Go to https://nodejs.org
-    echo     2. Download the LTS version
-    echo     3. Run the installer
-    echo     4. CLOSE this window and double-click Install.bat again
-    echo.
-    echo   Opening the Node.js download page...
-    start https://nodejs.org
-    echo.
-    pause
-    exit /b 1
+    powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $url = (Invoke-WebRequest -Uri 'https://nodejs.org/en/download/' -UseBasicParsing).Links | Where-Object { $_.href -match 'node-v.*-x64\.msi$' } | Select-Object -First 1 -ExpandProperty href; if (-not $url) { $url = 'https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi' }; Write-Host \"Downloading $url ...\"; Invoke-WebRequest -Uri $url -OutFile \"$env:TEMP\nodejs-install.msi\"; Write-Host 'Running installer...'; Start-Process msiexec.exe -ArgumentList '/i', \"$env:TEMP\nodejs-install.msi\", '/passive', '/norestart' -Wait; Remove-Item \"$env:TEMP\nodejs-install.msi\" -ErrorAction SilentlyContinue }"
+
+    :refresh_path_after_node
+    REM Refresh PATH so node/npm are available in this session
+    set "PATH=%ProgramFiles%\nodejs;%APPDATA%\npm;%PATH%"
+
+    where node >nul 2>nul
+    if %ERRORLEVEL% neq 0 (
+        echo.
+        echo   ERROR: Node.js installation failed.
+        echo   Please install manually from https://nodejs.org
+        echo   Then CLOSE this window and double-click Install.bat again.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 for /f "tokens=*" %%i in ('node --version') do set NODE_VERSION=%%i
 echo        Found Node.js %NODE_VERSION%
@@ -45,6 +62,9 @@ where yarn >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo        Yarn not found — installing via npm...
     call npm install -g yarn
+    REM Refresh PATH for yarn
+    set "PATH=%APPDATA%\npm;%PATH%"
+    where yarn >nul 2>nul
     if %ERRORLEVEL% neq 0 (
         echo.
         echo   ERROR: Could not install Yarn.

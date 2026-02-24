@@ -16,26 +16,75 @@ echo "============================================"
 echo ""
 
 # --------------------------------------------------
-# 1. Check for Node.js
+# Helper: reload PATH so newly installed tools are found
+# --------------------------------------------------
+reload_path() {
+    export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+    # Pick up nvm / fnm / Homebrew paths if they exist
+    [ -f "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+    [ -f "$HOME/.zprofile" ] && . "$HOME/.zprofile" 2>/dev/null
+    [ -f "$HOME/.bash_profile" ] && . "$HOME/.bash_profile" 2>/dev/null
+    eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null)" 2>/dev/null
+    eval "$(/usr/local/bin/brew shellenv 2>/dev/null)" 2>/dev/null
+}
+
+# --------------------------------------------------
+# 1. Check / install Node.js
 # --------------------------------------------------
 echo "[1/4] Checking for Node.js..."
 if command -v node &>/dev/null; then
     NODE_VERSION=$(node --version)
     echo "       Found Node.js $NODE_VERSION"
 else
+    echo "       Node.js not found — installing automatically..."
     echo ""
-    echo "  ERROR: Node.js is not installed."
-    echo ""
-    echo "  Please install Node.js first:"
-    echo "    1. Go to https://nodejs.org"
-    echo "    2. Download the LTS version"
-    echo "    3. Run the installer"
-    echo "    4. Then double-click this Install file again"
-    echo ""
-    echo "  Press any key to open the Node.js download page..."
-    read -n 1 -s
-    open "https://nodejs.org"
-    exit 1
+
+    # --- Strategy A: Use Homebrew if available ---
+    if command -v brew &>/dev/null; then
+        echo "       Installing Node.js via Homebrew..."
+        brew install node
+    else
+        # --- Strategy B: Install Homebrew first, then Node ---
+        echo "       Homebrew not found — installing Homebrew first..."
+        echo "       (You may be prompted for your Mac password)"
+        echo ""
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+        # Add Homebrew to PATH for this session
+        eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null)" 2>/dev/null
+        eval "$(/usr/local/bin/brew shellenv 2>/dev/null)" 2>/dev/null
+
+        if ! command -v brew &>/dev/null; then
+            echo ""
+            echo "  ERROR: Homebrew installation failed."
+            echo "  Please install Node.js manually from https://nodejs.org"
+            echo ""
+            echo "  Press any key to exit..."
+            read -n 1 -s
+            exit 1
+        fi
+
+        echo ""
+        echo "       Homebrew installed. Now installing Node.js..."
+        brew install node
+    fi
+
+    # Reload PATH and verify
+    reload_path
+
+    if ! command -v node &>/dev/null; then
+        echo ""
+        echo "  ERROR: Node.js installation failed."
+        echo "  Please install Node.js manually from https://nodejs.org"
+        echo "  Then double-click this Install file again."
+        echo ""
+        echo "  Press any key to exit..."
+        read -n 1 -s
+        exit 1
+    fi
+
+    NODE_VERSION=$(node --version)
+    echo "       Node.js $NODE_VERSION installed successfully."
 fi
 
 # --------------------------------------------------
@@ -49,6 +98,11 @@ else
     echo "       Yarn not found — installing via npm..."
     npm install -g yarn
     if [ $? -ne 0 ]; then
+        echo "       Retrying with sudo..."
+        sudo npm install -g yarn
+    fi
+    reload_path
+    if ! command -v yarn &>/dev/null; then
         echo ""
         echo "  ERROR: Could not install Yarn."
         echo "  Try running this in Terminal manually:"

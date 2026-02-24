@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { Shield, Lock, LogOut, Key, Activity, Cloud, Settings, Search } from 'lucide-react'
+import { Shield, Lock, LogOut, Key, Activity, Cloud, Settings, Search, CheckCircle } from 'lucide-react'
 import UnlockForm from '@/components/UnlockForm'
 import LogoutForm from '@/components/LogoutForm'
 import SearchForm from '@/components/SearchForm'
@@ -8,10 +8,11 @@ import ResponseViewer from '@/components/ResponseViewer'
 import Toast from '@/components/Toast'
 import PingAICTester from '@/components/PingAICTester'
 import PingAdminPanel from '../../components/PingAdminPanel'
+import ReconValidationPanel from '../../components/ReconValidationPanel'
 import { UnlockRequest, LogoutRequest, SearchRequest, ApiResponse, GigyaResponse } from '@/types/gigya'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'gigya' | 'ping' | 'admin'>('ping')
+  const [activeTab, setActiveTab] = useState<'gigya' | 'ping' | 'admin' | 'recon'>('ping')
   const [activeAction, setActiveAction] = useState<'unlock' | 'logout' | 'search'>('unlock')
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<GigyaResponse | null>(null)
@@ -29,7 +30,7 @@ export default function Home() {
 
   // Load and save tab preference
   useEffect(() => {
-    const savedTab = localStorage.getItem('selected_tab') as 'gigya' | 'ping' | 'admin';
+    const savedTab = localStorage.getItem('selected_tab') as 'gigya' | 'ping' | 'admin' | 'recon';
     if (savedTab) {
       setActiveTab(savedTab);
     }
@@ -226,9 +227,10 @@ export default function Home() {
                 <div className="flex items-center gap-2 ml-11">
                   <Activity className="w-3 h-3 text-green-400" />
                   <span className="text-xs text-gray-400">
-                    {activeTab === 'gigya' ? 'Gigya Account Management' : 
-                     activeTab === 'ping' ? 'Ping AIC OIDC Tester' : 
-                     'Ping Admin Panel'}
+                    {activeTab === 'gigya' ? 'Gigya Account Management' :
+                     activeTab === 'ping' ? 'Ping AIC OIDC Tester' :
+                     activeTab === 'admin' ? 'Ping Admin Panel' :
+                     'Data Integrity Validation'}
                   </span>
                 </div>
               </div>
@@ -270,6 +272,19 @@ export default function Home() {
                   <div className="flex items-center gap-2">
                     <Settings className="w-4 h-4" />
                     Ping Admin
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('recon')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'recon'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Recon Validation
                   </div>
                 </button>
               </div>
@@ -437,8 +452,10 @@ export default function Home() {
             </div>
           ) : activeTab === 'ping' ? (
             <PingAICTester />
-          ) : (
+          ) : activeTab === 'admin' ? (
             <PingAdminPanel />
+          ) : (
+            <ReconValidationPanel />
           )}
         </main>
 
